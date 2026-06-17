@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Timeline — {{ date_str }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --panel-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e6e8ee;
+      --muted: #8b93a7;
+      --accent: #7aa2f7;
+      --danger: #e0606e;
+      --px-per-min: 1.5;
+      --hour-h: 90px;  /* 60 min * 1.5 px/min */
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    nav a { color: var(--muted); text-decoration: none; margin-right: 12px; padding: 6px 10px; border-radius: 6px; }
+    nav a.active { background: var(--panel-2); color: var(--text); }
+    nav a:hover { color: var(--text); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+    .date-nav { display: flex; align-items: center; gap: 8px; }
+    .date-nav a, .btn { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; text-decoration: none; cursor: pointer; font-size: 13px; font-family: inherit; }
+    .btn:hover { background: var(--panel-2); }
+    .btn-primary { background: var(--accent); color: #0f1115; border-color: var(--accent); }
+    .btn-danger { background: var(--danger); color: #0f1115; border-color: var(--danger); }
+
+    /* Toggle button groups */
+    .toggle-bar { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .toggle-group { display: inline-flex; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .toggle-group a {
+      padding: 7px 14px; color: var(--muted); text-decoration: none; font-size: 13px;
+      border-right: 1px solid var(--border);
+    }
+    .toggle-group a:last-child { border-right: none; }
+    .toggle-group a.active { background: var(--accent); color: #0f1115; font-weight: 600; }
+    .toggle-group a:not(.active):hover { background: var(--panel-2); color: var(--text); }
+    .toggle-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Day view */
+    .timeline-day {
+      display: grid; grid-template-columns: 60px 1fr;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; position: relative;
+    }
+    /* Week view */
+    .timeline-week {
+      display: grid;
+      grid-template-columns: 60px repeat(7, 1fr);
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; position: relative;
+    }
+    .day-header {
+      position: sticky; top: 0; z-index: 8;
+      background: var(--panel-2); border-bottom: 1px solid var(--border);
+      padding: 8px 10px; text-align: center; font-size: 12px;
+      border-right: 1px solid var(--border);
+    }
+    .day-header.today { color: var(--accent); font-weight: 600; }
+    .day-header .dow { display: block; font-weight: 600; font-size: 13px; }
+    .day-header .date { color: var(--muted); }
+    .week-corner { background: var(--panel-2); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+    .hours { position: relative; }
+    .hour {
+      position: absolute; left: 0; right: 0;
+      border-top: 1px solid var(--border);
+      padding-left: 8px; padding-top: 2px;
+      color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums;
+    }
+    .lanes {
+      position: relative;
+      border-left: 1px solid var(--border);
+    }
+    .lanes.day-col { border-right: 1px solid var(--border); }
+    .gridline {
+      position: absolute; left: 0; right: 0;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .entry-block {
+      position: absolute;
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      overflow: hidden;
+      color: #0f1115;
+      font-size: 12px;
+      line-height: 1.25;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.25) inset;
+      transition: box-shadow 0.1s, transform 0.05s;
+    }
+    .entry-block:hover { box-shadow: 0 0 0 2px var(--accent), 0 1px 0 rgba(0,0,0,0.25) inset; z-index: 5; }
+    .entry-block.movable { cursor: grab; }
+    .entry-block.dragging { cursor: grabbing; z-index: 50; opacity: 0.9; box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0,0,0,0.4); transition: none; }
+    .resize-handle {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+      cursor: ns-resize;
+    }
+    .resize-handle::after {
+      content: ''; position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+      width: 24px; height: 3px; border-radius: 2px; background: rgba(15,17,21,0.35);
+      opacity: 0; transition: opacity 0.1s;
+    }
+    .entry-block.movable:hover .resize-handle::after { opacity: 1; }
+    .drag-time-badge {
+      position: absolute; z-index: 60; pointer-events: none;
+      background: var(--accent); color: #0f1115; font-weight: 700; font-size: 11px;
+      padding: 2px 7px; border-radius: 5px; font-variant-numeric: tabular-nums;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .entry-block .eb-time { font-size: 10px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+    .entry-block .eb-cat { font-weight: 700; font-size: 11px; }
+    .entry-block .eb-cat .sub { font-weight: 500; opacity: 0.75; }
+    .entry-block .eb-desc { font-weight: 400; opacity: 0.85; font-size: 11px; margin-top: 2px; }
+    .entry-block.short { padding: 2px 6px; }
+    .entry-block.short .eb-desc { display: none; }
+    .entry-block.tiny { padding: 1px 4px; }
+    .entry-block.tiny .eb-desc, .entry-block.tiny .eb-time { display: none; }
+    .entry-block.tiny .eb-cat { font-size: 10px; }
+    .entry-block .count-badge {
+      display: inline-block; background: rgba(15,17,21,0.25); color: rgba(15,17,21,0.95);
+      padding: 0 5px; border-radius: 8px; font-size: 9px; margin-left: 4px; font-weight: 700;
+      vertical-align: middle;
+    }
+    .entry-block.source-timer { box-shadow: 0 0 0 1px rgba(15,17,21,0.5) inset; }
+    .entry-block.source-recovered { outline: 1px dashed rgba(15,17,21,0.45); outline-offset: -2px; }
+    .entry-block.lane-overflow { width: 26px !important; padding: 1px 3px; }
+    .entry-block.lane-overflow .eb-time, .entry-block.lane-overflow .eb-desc { display: none; }
+    .entry-block.lane-overflow .eb-cat { font-size: 0; }
+    .entry-block.lane-overflow .count-badge { margin: 0; font-size: 11px; padding: 0; background: none; }
+
+    .now-line {
+      position: absolute; left: 0; right: 0;
+      border-top: 2px solid var(--danger); z-index: 10; pointer-events: none;
+    }
+    .now-line::before {
+      content: ''; position: absolute; left: -6px; top: -6px;
+      width: 10px; height: 10px; border-radius: 50%; background: var(--danger);
+    }
+
+    .empty { padding: 60px 20px; text-align: center; color: var(--muted); grid-column: 1 / -1; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .legend .swatch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .legend .swatch .dot { width: 10px; height: 10px; border-radius: 3px; }
+
+    /* Merged-block details popover */
+    dialog.detail-modal {
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px; max-width: 480px; width: calc(100% - 32px);
+    }
+    dialog.detail-modal::backdrop { background: rgba(0,0,0,0.65); }
+    .detail-modal h3 { margin: 0 0 4px; font-size: 15px; }
+    .detail-modal .meta { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+    .detail-modal ul { margin: 0; padding-left: 18px; font-size: 13px; }
+    .detail-modal li { margin-bottom: 4px; color: var(--text); }
+    .detail-modal .hint { margin-top: 14px; color: var(--muted); font-size: 12px; }
+    .detail-modal .close { float: right; }
+
+    /* Edit modal (matches dashboard) */
+    dialog.edit-modal {
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 0; max-width: 500px; width: calc(100% - 32px);
+    }
+    dialog.edit-modal::backdrop { background: rgba(0,0,0,0.65); }
+    .edit-modal-body { padding: 20px; }
+    .edit-modal h3 { margin: 0 0 16px; font-size: 16px; }
+    .edit-modal .field { margin-bottom: 12px; }
+    .edit-modal label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .edit-modal input, .edit-modal select, .edit-modal textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 9px 11px; border-radius: 6px; font-size: 14px; font-family: inherit;
+    }
+    .edit-modal textarea { min-height: 70px; resize: vertical; }
+    .edit-modal-actions {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    }
+    .edit-modal-actions .right { display: flex; gap: 8px; }
+
+    .stop-btn {
+      margin-left: auto; color: var(--danger);
+      text-decoration: none; padding: 6px 12px;
+      border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+    }
+    .stop-btn:hover { background: rgba(224,96,110,0.1); border-color: var(--danger); }
+    .stopped-screen {
+      min-height: 80vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; gap: 16px;
+    }
+    .stopped-screen .big { font-size: 56px; opacity: 0.6; }
+    .stopped-screen h2 { margin: 0; font-size: 22px; font-weight: 600; }
+    .stopped-screen p { color: var(--muted); margin: 0; max-width: 460px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⏱ Otishi Time Tracker</h1>
+  <nav>
+    <a href="/today">Day</a>
+    <a href="/week">Week</a>
+    <a href="/timeline" class="active">Timeline</a>
+    <a href="/weekly-report">Weekly Report</a>
+    <a href="/log">📱 Quick log</a>
+  </nav>
+  <a href="#" class="stop-btn" onclick="stopTracker(); return false;"
+     title="Stop the tracker (no more screenshots until you launch it again)">⏻ Stop tracker</a>
+</header>
+
+<div class="container">
+
+  <div class="topbar">
+    <div class="date-nav">
+      <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ prev_date }}&granularity={{ granularity }}">←</a>
+      <strong>{{ date_str }}</strong>
+      <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ next_date }}&granularity={{ granularity }}">→</a>
+    </div>
+    <a class="btn" href="/today?date={{ iso_date }}">View as list →</a>
+  </div>
+
+  <div class="toggle-bar">
+    <span class="toggle-label">View</span>
+    <div class="toggle-group">
+      <a href="?view=day&date={{ iso_date }}&granularity={{ granularity }}" class="{{ 'active' if view == 'day' }}">Day</a>
+      <a href="?view=week&date={{ iso_date }}&granularity={{ granularity }}" class="{{ 'active' if view == 'week' }}">Week</a>
+    </div>
+
+    <span class="toggle-label" style="margin-left: 8px;">Granularity</span>
+    <div class="toggle-group">
+      <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=parent" class="{{ 'active' if granularity == 'parent' }}" title="Group by parent category only">Parent</a>
+      <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=sub" class="{{ 'active' if granularity == 'sub' }}" title="Group consecutive entries with same parent + subcategory">Sub</a>
+      <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=raw" class="{{ 'active' if granularity == 'raw' }}" title="Every individual capture as its own block">Raw</a>
+    </div>
+  </div>
+
+  {% set total_min = window_end - window_start %}
+  {% set h = (total_min * 1.5)|int %}
+
+  {% if view == 'day' %}
+    {% if not entries %}
+      <div class="timeline-day" style="height: 200px;"><div class="empty">No entries for this day.</div></div>
+    {% else %}
+      <div class="timeline-day" style="height: {{ h }}px;">
+        <div class="hours">
+          {% for hr in hours %}
+          <div class="hour" style="top: {{ ((hr.min - window_start) * 1.5)|int }}px;">{{ hr.label }}</div>
+          {% endfor %}
+        </div>
+        <div class="lanes" data-col-date="{{ iso_date }}">
+          {% for hr in hours %}
+          <div class="gridline" style="top: {{ ((hr.min - window_start) * 1.5)|int }}px;"></div>
+          {% endfor %}
+          {% set col_date = iso_date %}
+          {% include '_blocks.html' %}
+          {% if now_min is not none and now_min >= window_start and now_min <= window_end %}
+          <div class="now-line" style="top: {{ ((now_min - window_start) * 1.5)|int }}px;" title="Now"></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="legend">
+        {% set seen = [] %}
+        {% for e in entries %}
+          {% if e.category not in seen %}{% if seen.append(e.category) %}{% endif %}
+            <span class="swatch"><span class="dot" data-parent="{{ e.category|e }}"></span>{{ e.category }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+  {% else %}  {# week view #}
+    <div class="timeline-week" style="grid-template-rows: 36px {{ h }}px;">
+      <div class="week-corner"></div>
+      {% for d in days %}
+        <div class="day-header {{ 'today' if d.is_today }}">
+          <span class="dow">{{ d.label_dow }}</span>
+          <span class="date">{{ d.label_date }}</span>
+        </div>
+      {% endfor %}
+
+      <div class="hours">
+        {% for hr in hours %}
+        <div class="hour" style="top: {{ ((hr.min - window_start) * 1.5)|int }}px;">{{ hr.label }}</div>
+        {% endfor %}
+      </div>
+
+      {% for d in days %}
+      <div class="lanes day-col" data-col-date="{{ d.iso }}">
+        {% for hr in hours %}
+        <div class="gridline" style="top: {{ ((hr.min - window_start) * 1.5)|int }}px;"></div>
+        {% endfor %}
+        {% set entries = d.blocks %}
+        {% set total_lanes = d.total_lanes %}
+        {% set col_date = d.iso %}
+        {% include '_blocks.html' %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="legend">
+      {% set seen = [] %}
+      {% for d in days %}{% for e in d.blocks %}
+        {% if e.category not in seen %}{% if seen.append(e.category) %}{% endif %}
+          <span class="swatch"><span class="dot" data-parent="{{ e.category|e }}"></span>{{ e.category }}</span>
+        {% endif %}
+      {% endfor %}{% endfor %}
+    </div>
+  {% endif %}
+
+</div>
+
+<dialog class="detail-modal" id="detail-modal">
+  <button class="btn close" onclick="document.getElementById('detail-modal').close()">×</button>
+  <h3 id="dm-title">—</h3>
+  <div class="meta" id="dm-meta">—</div>
+  <ul id="dm-list"></ul>
+  <div class="hint">To edit individual entries within this block, switch granularity to <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=raw" style="color: var(--accent);">Raw</a>.</div>
+</dialog>
+
+<dialog class="edit-modal" id="edit-modal">
+  <form id="edit-form" method="post">
+    <div class="edit-modal-body">
+      <h3>Edit entry</h3>
+      <div class="field">
+        <label>Category</label>
+        <select name="category" id="em-parent" onchange="emUpdateSubs()">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Subcategory</label>
+        <input name="subcategory" id="em-sub" list="em-sub-options">
+        <datalist id="em-sub-options"></datalist>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea name="description" id="em-desc"></textarea>
+      </div>
+      <div class="field">
+        <label>Duration (minutes)</label>
+        <input type="number" name="duration" id="em-duration" min="1" max="600">
+      </div>
+    </div>
+    <div class="edit-modal-actions">
+      <button type="button" class="btn btn-danger" onclick="deleteEntry()">Delete</button>
+      <div class="right">
+        <button type="button" class="btn" onclick="document.getElementById('edit-modal').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const TREE = {{ tree|tojson }};
+
+  function colorFor(name) {
+    let h = 0;
+    for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+    return `hsl(${h}, 65%, 65%)`;
+  }
+  document.querySelectorAll('.entry-block').forEach(el => {
+    el.style.background = colorFor(el.dataset.parent);
+  });
+  document.querySelectorAll('.legend .dot').forEach(el => {
+    el.style.background = colorFor(el.dataset.parent);
+  });
+
+  // Single-entry click → edit modal. Merged-block click → detail popover.
+  let currentEntryId = null;
+  let suppressClick = false;  // set true right after a drag so it doesn't open the modal
+  document.querySelectorAll('.entry-block').forEach(el => {
+    el.addEventListener('click', () => {
+      if (suppressClick) { suppressClick = false; return; }
+      const count = parseInt(el.dataset.count || '1');
+      if (count > 1) {
+        document.getElementById('dm-title').textContent = el.dataset.category + ' › ' + el.dataset.subcategory;
+        document.getElementById('dm-meta').textContent = el.dataset.timeRange + ' · ' + el.dataset.duration + ' min · ' + count + ' captures';
+        const list = document.getElementById('dm-list');
+        list.innerHTML = '';
+        const descs = JSON.parse(el.dataset.descriptions || '[]');
+        if (descs.length === 0) {
+          list.innerHTML = '<li style="color: var(--muted);">No descriptions captured.</li>';
+        } else {
+          descs.forEach(d => { const li = document.createElement('li'); li.textContent = d; list.appendChild(li); });
+        }
+        document.getElementById('detail-modal').showModal();
+      } else {
+        currentEntryId = el.dataset.id;
+        document.getElementById('em-parent').value = el.dataset.category;
+        emUpdateSubs();
+        document.getElementById('em-sub').value = el.dataset.subcategory;
+        document.getElementById('em-desc').value = el.dataset.description || '';
+        document.getElementById('em-duration').value = el.dataset.duration;
+        document.getElementById('edit-form').action = `/entry/${currentEntryId}/edit`;
+        document.getElementById('edit-modal').showModal();
+      }
+    });
+  });
+
+  // ---- Drag to move / resize (Google-Calendar style) ----
+  // Single-entry blocks only. Moving changes start time; the bottom handle
+  // changes duration. Both snap to 5-minute increments. Blocks stay in their
+  // own day column (no cross-day drag).
+  (function enableDragResize() {
+    const PX_PER_MIN = 1.5;
+    const WINDOW_START = {{ window_start }};  // minutes from midnight
+    const SNAP = 5;
+    let active = null;
+
+    const minutesFromTop = (topPx) => WINDOW_START + topPx / PX_PER_MIN;
+    const snap = (min) => Math.round(min / SNAP) * SNAP;
+    function fmt(min) {
+      min = ((Math.round(min) % 1440) + 1440) % 1440;
+      let h = Math.floor(min / 60), m = min % 60;
+      const ap = h < 12 ? 'AM' : 'PM';
+      let dh = h % 12; if (dh === 0) dh = 12;
+      return `${dh}:${String(m).padStart(2, '0')} ${ap}`;
+    }
+
+    const badge = document.createElement('div');
+    badge.className = 'drag-time-badge';
+    badge.style.display = 'none';
+    document.body.appendChild(badge);
+    function showBadge(e, text) {
+      badge.textContent = text;
+      badge.style.display = 'block';
+      badge.style.left = (e.clientX + 14) + 'px';
+      badge.style.top = (e.clientY + 14) + 'px';
+    }
+
+    // All day columns (1 in day view, 7 in week view), for cross-day drop.
+    const columns = Array.from(document.querySelectorAll('.lanes[data-col-date]'));
+    function columnAtX(x) {
+      for (const c of columns) {
+        const r = c.getBoundingClientRect();
+        if (x >= r.left && x <= r.right) return c;
+      }
+      return null;
+    }
+
+    document.querySelectorAll('.entry-block.movable').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        active = {
+          el,
+          mode: e.target.classList.contains('resize-handle') ? 'resize' : 'move',
+          startY: e.clientY,
+          origTop: parseFloat(el.style.top) || 0,
+          origHeight: parseFloat(el.style.height) || 0,
+          targetCol: el.closest('.lanes[data-col-date]'),
+          moved: false,
+        };
+        e.preventDefault();
+      });
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!active) return;
+      const dy = e.clientY - active.startY;
+      if (Math.abs(dy) > 3) active.moved = true;
+      if (!active.moved) return;
+      active.el.classList.add('dragging');
+      if (active.mode === 'move') {
+        let startMin = snap(minutesFromTop(Math.max(0, active.origTop + dy)));
+        startMin = Math.max(0, Math.min(startMin, 1435));
+        active.el.style.top = ((startMin - WINDOW_START) * PX_PER_MIN) + 'px';
+        // Cross-day: if the cursor is over a different column, reparent the block.
+        if (columns.length > 1) {
+          const col = columnAtX(e.clientX);
+          if (col && col !== active.targetCol) {
+            col.appendChild(active.el);
+            active.targetCol = col;
+          }
+        }
+        const durMin = active.origHeight / PX_PER_MIN;
+        const dayLabel = columns.length > 1
+          ? new Date(active.targetCol.dataset.colDate + 'T00:00:00')
+              .toLocaleDateString(undefined, { weekday: 'short' }) + ' '
+          : '';
+        showBadge(e, `${dayLabel}${fmt(startMin)} – ${fmt(startMin + durMin)}`);
+      } else {
+        let durMin = Math.max(SNAP, snap((active.origHeight + dy) / PX_PER_MIN));
+        active.el.style.height = (durMin * PX_PER_MIN) + 'px';
+        showBadge(e, `${durMin} min`);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!active) return;
+      const a = active; active = null;
+      badge.style.display = 'none';
+      a.el.classList.remove('dragging');
+      if (!a.moved) return;  // was a click, let the modal open
+      suppressClick = true;
+      const ids = JSON.parse(a.el.dataset.entryIds || '[]');
+      let payload;
+      if (a.mode === 'move') {
+        const startMin = snap(minutesFromTop(parseFloat(a.el.style.top)));
+        const date = (a.targetCol && a.targetCol.dataset.colDate) || a.el.dataset.date;
+        payload = { entry_ids: ids, mode: 'move', date, start_min: startMin };
+      } else {
+        const durMin = snap(parseFloat(a.el.style.height) / PX_PER_MIN) || SNAP;
+        payload = { entry_ids: ids, mode: 'resize', duration_minutes: durMin };
+      }
+      fetch('/entries/move', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).then(() => location.reload())
+        .catch(err => { alert('Move failed: ' + err); location.reload(); });
+    });
+  })();
+
+  function emUpdateSubs() {
+    const parent = document.getElementById('em-parent').value;
+    const dl = document.getElementById('em-sub-options');
+    dl.innerHTML = '';
+    (TREE[parent] || []).forEach(s => { const o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+  }
+  function deleteEntry() {
+    if (!currentEntryId || !confirm('Delete this entry? This cannot be undone.')) return;
+    const f = document.createElement('form');
+    f.method = 'post'; f.action = `/entry/${currentEntryId}/delete`;
+    document.body.appendChild(f); f.submit();
+  }
+  ['edit-modal','detail-modal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) e.target.close(); });
+  });
+
+  function stopTracker() {
+    if (!confirm('Stop the tracker?\n\nIt will no longer capture screenshots until you launch it again from your desktop icon.')) return;
+    fetch('/api/shutdown', {method: 'POST'})
+      .then(r => r.json().catch(() => ({}))).catch(() => ({}))
+      .finally(() => {
+        document.body.innerHTML = `
+          <div class="stopped-screen">
+            <div class="big">⏻</div>
+            <h2>Tracker stopped</h2>
+            <p>No more auto-screenshots until you launch it again.</p>
+            <p>Click your <strong>Otishi Time Tracker</strong> desktop icon or taskbar shortcut to start it back up.</p>
+            <p style="margin-top:16px;"><a href="/" style="color:#7aa2f7;">try reconnecting →</a></p>
+          </div>`;
+        document.title = 'Tracker stopped';
+      });
+  }
+
+  // Auto-scroll: now-line if today, else first block
+  const target = document.querySelector('.now-line') || document.querySelector('.entry-block');
+  if (target) setTimeout(() => target.scrollIntoView({ block: 'center' }), 50);
+</script>
+
+</body>
+</html>

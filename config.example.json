@@ -1,0 +1,114 @@
+{
+  "anthropic_api_key": "PASTE_YOUR_ANTHROPIC_API_KEY_HERE",
+  "model": "claude-sonnet-4-6",
+  "screenshot_interval_minutes": 15,
+  "screenshot_dir": "screenshots",
+  "database_path": "timetracker.db",
+  "dashboard_port": 5555,
+  "retention_days": 30,
+  "work_schedule": {
+    "auto": true,
+    "days": {
+      "mon": {
+        "on": true,
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "tue": {
+        "on": true,
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "wed": {
+        "on": true,
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "thu": {
+        "on": true,
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "fri": {
+        "on": true,
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "sat": {
+        "on": false,
+        "start": "10:00",
+        "end": "15:00"
+      },
+      "sun": {
+        "on": false,
+        "start": "10:00",
+        "end": "15:00"
+      }
+    }
+  },
+  "category_tree": {
+    "Email Marketing": [
+      "Klaviyo",
+      "Redo",
+      "Campaign Planning",
+      "List Segmentation"
+    ],
+    "Paid Media": [
+      "Meta Ads",
+      "TikTok Ads",
+      "Google Ads",
+      "Snapchat Ads",
+      "Creative Review"
+    ],
+    "Creator/UGC Management": [
+      "Instagram DM Outreach",
+      "Contract Management",
+      "Content Review",
+      "Gifting"
+    ],
+    "Social Media": [
+      "Instagram Posting",
+      "TikTok Posting",
+      "Content Planning",
+      "Community Replies"
+    ],
+    "Website/Shopify": [
+      "Theme/Liquid Edits",
+      "Product Updates",
+      "Collections",
+      "Analytics"
+    ],
+    "Operations": [
+      "Inventory",
+      "Fulfillment",
+      "Customer Service",
+      "Vendor Comms"
+    ],
+    "Strategy/Planning": [
+      "Roadmap",
+      "Financials",
+      "Co-founder Sync",
+      "Brand Strategy"
+    ],
+    "Admin/Other": [
+      "Email Triage",
+      "Calendar",
+      "Misc"
+    ],
+    "Break / Idle": [
+      "Break / Idle"
+    ],
+    "Away": [
+      "Idle",
+      "Locked Screen",
+      "Off Desk"
+    ]
+  },
+  "idle_detection": {
+    "enabled": true,
+    "similarity_threshold": 6,
+    "captures_to_flag_idle": 2,
+    "show_popup": true
+  },
+  "user_context": "I'm a co-founder at Otishi (a footwear brand). My work spans email marketing (Redo/Klaviyo), paid media (Meta/TikTok/Google/Snapchat ads), creator and UGC management (Instagram DMs, gifting, contracts), social media posting, Shopify website edits, operations, strategy, and general admin."
+}

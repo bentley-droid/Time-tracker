@@ -1,0 +1,40 @@
+{# Renders entry blocks for a single day's column. Expects in scope:
+     entries       — list of merged block dicts
+     total_lanes   — int
+     window_start  — int (minutes from midnight)
+     col_date      — 'YYYY-MM-DD' for this column (used by drag-to-move)
+   Lane 0 fills the column; lane 1+ render as thin 26px right-edge thumbs
+   stacked from the right. Keeps the common single-lane case clean.
+   Single-entry blocks (primary_id set) in lane 0 are draggable/resizable. #}
+{% for e in entries %}
+  {% set top = ((e.start_min - window_start) * 1.5)|int %}
+  {% set height = (e.duration_minutes * 1.5)|int %}
+  {% set overflow = e.lane > 0 %}
+  {% set movable = not overflow %}  {# merged blocks move as a unit; lane-overflow thumbs stay click-only #}
+  <div class="entry-block source-{{ e.source }} {{ 'tiny' if height < 18 else ('short' if height < 36) }} {{ 'lane-overflow' if overflow }} {{ 'movable' if movable }}"
+       data-id="{{ e.primary_id if e.primary_id is not none }}"
+       data-entry-ids='{{ e.entry_ids|tojson }}'
+       data-count="{{ e.count }}"
+       data-category="{{ e.category|e }}"
+       data-subcategory="{{ e.subcategory|e }}"
+       data-description="{{ (e.descriptions[0] if e.descriptions else '')|e }}"
+       data-descriptions='{{ e.descriptions|tojson }}'
+       data-duration="{{ e.duration_minutes|int }}"
+       data-date="{{ col_date }}"
+       data-time-range="{{ e.start_label }} – {{ e.end_label }}"
+       data-parent="{{ e.category|e }}"
+       style="top: {{ top }}px; height: {{ height }}px;
+              {% if overflow %}right: {{ (e.lane - 1) * 30 + 4 }}px;
+              {% else %}left: 4px; right: {{ 4 + (total_lanes - 1) * 30 + (4 if total_lanes > 1 else 0) }}px;{% endif %}"
+       title="{{ e.start_label }} – {{ e.end_label }} • {{ e.category }} › {{ e.subcategory }}{% if e.count > 1 %} • {{ e.count }} captures{% endif %}{% if e.descriptions %} • {{ e.descriptions[0] }}{% if e.descriptions|length > 1 %} (+{{ e.descriptions|length - 1 }} more){% endif %}{% endif %}">
+    <div class="eb-time">{{ e.start_label }} · {{ e.duration_minutes|int }}m</div>
+    <div class="eb-cat">
+      {{ e.category }}{% if e.subcategory != e.category %} <span class="sub">› {{ e.subcategory }}</span>{% endif %}
+      {% if e.count > 1 %}<span class="count-badge">{{ e.count }}</span>{% endif %}
+    </div>
+    {% if e.descriptions and e.descriptions[0] %}
+    <div class="eb-desc">{{ e.descriptions[0] }}</div>
+    {% endif %}
+    {% if movable %}<div class="resize-handle" title="Drag to change duration"></div>{% endif %}
+  </div>
+{% endfor %}

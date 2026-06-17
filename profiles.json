@@ -1,0 +1,32 @@
+{
+  "profiles": {
+    "bentley": {
+      "label": "Bentley",
+      "role": "Marketing",
+      "user_context": "I'm Bentley, a co-founder at Otishi (a footwear brand). My work focuses on MARKETING: email marketing (Redo/Klaviyo), paid media (Meta/TikTok/Google/Snapchat ads), creator & UGC management (Instagram DMs, gifting, contracts), and social media. I also touch Shopify/website, strategy, and general admin. A lot of my work happens through AI tools (Claude Code, Claude Cowork) — categorize by the underlying marketing work, not the tool."
+    },
+    "dj": {
+      "label": "DJ",
+      "role": "Brand & Product",
+      "user_context": "I'm DJ, on the Otishi team (a footwear brand). My work focuses on BRAND and PRODUCT: product design & development, brand strategy and creative direction, design work (Figma, Photoshop, Illustrator, Canva), Shopify/website and product pages, content and social media, and running booths/activations at events. Categorize toward brand, product, design, and creative work."
+    },
+    "jose": {
+      "label": "Jose",
+      "role": "Ops & Finance",
+      "user_context": "I'm Jose, a co-founder at Otishi (a footwear brand). My work focuses on OPERATIONS and FINANCE: inventory, fulfillment, shipping/logistics, vendor & supplier comms, customer service, accounting and financials (spreadsheets, QuickBooks, bank/invoices), and general operations & admin. When you see spreadsheets or financial tools, lean toward Operations or Finance rather than marketing."
+    }
+  },
+  "task_areas": [
+    "Email Marketing",
+    "Paid Media",
+    "Creator/UGC Management",
+    "Social Media",
+    "Brand & Product / Design",
+    "Website/Shopify",
+    "Operations",
+    "Finance / Accounting",
+    "Strategy/Planning",
+    "Customer Service",
+    "Admin/Other"
+  ]
+}

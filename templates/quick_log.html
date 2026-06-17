@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Quick Log</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --panel-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e6e8ee;
+      --muted: #8b93a7;
+      --accent: #7aa2f7;
+      --accent-2: #9ece6a;
+      --success: #1a4a2a;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 17px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif; }
+    body { min-height: 100vh; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+
+    header {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px; padding-top: max(14px, env(safe-area-inset-top));
+      display: flex; align-items: center; gap: 12px;
+    }
+    header .back {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      width: 38px; height: 38px; border-radius: 10px;
+      font-size: 18px; display: none; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .step-2 header .back, .step-3 header .back { display: inline-flex; }
+    header h1 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; }
+    header .crumb { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: 6px; }
+
+    main { flex: 1; padding: 18px; }
+    .step { display: none; }
+    .step-1 .s1, .step-2 .s2, .step-3 .s3 { display: block; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .btn-card {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      border-radius: 14px; padding: 22px 14px; min-height: 90px;
+      font-size: 16px; font-weight: 600; text-align: left;
+      cursor: pointer; transition: transform 0.05s, background 0.1s;
+      display: flex; flex-direction: column; justify-content: space-between;
+      line-height: 1.2;
+    }
+    .btn-card:active { transform: scale(0.97); background: var(--panel-2); }
+    .btn-card.parent { border-left: 4px solid var(--accent); }
+    .btn-card.sub    { border-left: 4px solid var(--accent-2); }
+    .btn-card .hint { color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 8px; }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .field input, .field textarea {
+      width: 100%; background: var(--panel); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 14px 16px;
+      font: 16px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
+      -webkit-appearance: none;
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
+    .field input:focus, .field textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 16px; border-radius: 999px; font-size: 15px;
+      cursor: pointer; min-width: 60px; text-align: center;
+    }
+    .chip.active { background: var(--accent); color: #0f1115; border-color: var(--accent); font-weight: 600; }
+    .chip:active { transform: scale(0.96); }
+
+    .summary {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 16px; font-size: 14px;
+    }
+    .summary .lbl { color: var(--muted); font-size: 12px; }
+    .summary b { color: var(--accent); }
+
+    .submit-bar {
+      position: sticky; bottom: 0;
+      background: var(--bg); border-top: 1px solid var(--border);
+      padding: 14px 18px; padding-bottom: max(14px, env(safe-area-inset-bottom));
+      display: flex; gap: 10px;
+    }
+    .btn-primary {
+      flex: 1; background: var(--accent); color: #0f1115; border: none;
+      padding: 16px; border-radius: 12px; font-size: 17px; font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-primary:active { background: #8fb3ff; }
+    .btn-secondary {
+      background: var(--panel); color: var(--text); border: 1px solid var(--border);
+      padding: 16px 20px; border-radius: 12px; font-size: 15px; cursor: pointer;
+    }
+
+    .toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+      background: var(--success); color: #c8f7d4; padding: 14px 24px; border-radius: 999px;
+      font-weight: 600; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+
+    .footer-link {
+      text-align: center; padding: 18px; color: var(--muted); font-size: 13px;
+    }
+    .footer-link a { color: var(--muted); }
+
+    /* Mode tabs */
+    .mode-tabs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      padding: 0 18px 12px;
+    }
+    .mode-tab {
+      background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+      padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+      text-align: center;
+    }
+    .mode-tab.active { background: var(--accent); color: #0f1115; border-color: var(--accent); }
+
+    /* Running timer banner — large */
+    .timer-banner {
+      background: linear-gradient(135deg, #1a3a4a, #15293a);
+      border: 1px solid var(--accent); border-radius: 14px;
+      padding: 20px; margin: 0 18px 16px;
+    }
+    .timer-banner .lbl { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .timer-banner .cat { font-size: 13px; color: var(--muted); margin-top: 8px; }
+    .timer-banner .desc { font-size: 17px; font-weight: 600; margin-top: 2px; }
+    .timer-banner .elapsed-big { font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 12px; text-align: center; }
+    .timer-banner .stop-btn {
+      display: block; width: 100%; margin-top: 16px;
+      background: #e0606e; color: #0f1115; border: none; padding: 18px;
+      border-radius: 12px; font-size: 17px; font-weight: 800; cursor: pointer;
+    }
+    .timer-banner .stop-btn:active { background: #f07a87; }
+
+    /* Timer start form */
+    .timer-form { padding: 0 18px; }
+    .timer-form .picker-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .picker-btn {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 14px; border-radius: 10px; font-size: 14px; text-align: left;
+      cursor: pointer; min-height: 56px; display: flex; align-items: center;
+    }
+    .picker-btn .pl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; display: block; }
+    .picker-btn .pv { color: var(--text); font-size: 15px; font-weight: 600; }
+
+    .clock-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--panel);
+    }
+    .clock-status { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+    .clock-status .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--muted); }
+    .clock-status .dot.in { background: var(--accent-2); box-shadow: 0 0 0 3px rgba(158,206,106,0.2); }
+    #clock-btn {
+      border: none; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 700;
+      cursor: pointer; background: var(--accent-2); color: #0f1115;
+    }
+    #clock-btn.is-in { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  </style>
+</head>
+<body class="step-1">
+
+<header>
+  <button class="back" onclick="goBack()" aria-label="Back">←</button>
+  <h1 id="title">Quick log <span class="crumb" id="crumb"></span></h1>
+</header>
+
+<div class="clock-bar" id="clock-bar">
+  <div class="clock-status" id="clock-status">
+    <span class="dot {{ 'in' if clock and clock.clocked_in }}" id="clock-dot"></span>
+    <span id="clock-text">{{ 'Clocked in' if clock and clock.clocked_in else 'Clocked out' }}</span>
+  </div>
+  <button id="clock-btn" class="{{ 'is-in' if clock and clock.clocked_in }}" onclick="toggleClock()">
+    {{ 'Clock out' if clock and clock.clocked_in else 'Clock in' }}
+  </button>
+</div>
+
+{% if active_timer %}
+<div class="timer-banner" id="timer-banner">
+  <div class="lbl">⏱ Timer running</div>
+  <div class="cat">{{ active_timer.category }} › {{ active_timer.subcategory }}</div>
+  <div class="desc">{{ active_timer.description or '(no description)' }}</div>
+  <div class="elapsed-big" id="elapsed-big" data-started="{{ active_timer.started_at }}">00:00</div>
+  <button class="stop-btn" onclick="stopTimer()">Stop &amp; log</button>
+</div>
+{% else %}
+<div class="mode-tabs">
+  <div class="mode-tab active" data-mode="past" onclick="switchMode('past')">Log past time</div>
+  <div class="mode-tab" data-mode="timer" onclick="switchMode('timer')">Start a timer</div>
+</div>
+{% endif %}
+
+<main>
+
+  <section class="step s1" id="mode-past">
+    <div class="grid">
+      {% for parent in tree.keys() %}
+      <button class="btn-card parent" onclick="pickParent('{{ parent|e }}')">
+        {{ parent }}
+        <span class="hint">{{ tree[parent]|length }} subcategor{{ 'y' if tree[parent]|length == 1 else 'ies' }}</span>
+      </button>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section id="mode-timer" style="display:none;">
+    <form class="timer-form" id="timer-form" onsubmit="return startTimer(event)">
+      <input type="hidden" name="category" id="tmr-category">
+      <input type="hidden" name="subcategory" id="tmr-subcategory">
+
+      <div class="picker-row">
+        <button type="button" class="picker-btn" onclick="openTimerPicker('parent')">
+          <div>
+            <span class="pl">Category</span>
+            <span class="pv" id="tmr-parent-label">Choose…</span>
+          </div>
+        </button>
+        <button type="button" class="picker-btn" onclick="openTimerPicker('sub')" id="tmr-sub-btn" disabled>
+          <div>
+            <span class="pl">Subcategory</span>
+            <span class="pv" id="tmr-sub-label">—</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="field">
+        <label for="tmr-desc">What are you working on?</label>
+        <textarea id="tmr-desc" name="description" placeholder="e.g. Setting up FitCon booth" required></textarea>
+      </div>
+
+      <button type="submit" class="btn-primary" style="width:100%; padding:18px; font-size:17px; font-weight:700; background:var(--accent-2); color:#0f1115; border:none; border-radius:12px; cursor:pointer;">
+        ▶ Start timer
+      </button>
+    </form>
+  </section>
+
+  <section class="step s2">
+    <div class="grid" id="sub-grid"></div>
+  </section>
+
+  <section class="step s3">
+    <form id="log-form" action="/manual" method="post" onsubmit="return submitForm(event)">
+      <input type="hidden" name="category" id="f-category">
+      <input type="hidden" name="subcategory" id="f-subcategory">
+
+      <div class="summary">
+        <div class="lbl">Logging</div>
+        <div><b id="sum-parent"></b> &rsaquo; <span id="sum-sub"></span></div>
+      </div>
+
+      <div class="field">
+        <label for="f-description">What were you doing?</label>
+        <textarea name="description" id="f-description" placeholder="e.g. Reviewed Sneaker A creative with co-founder" required></textarea>
+      </div>
+
+      <div class="field">
+        <label>Duration</label>
+        <div class="chips" id="duration-chips">
+          <div class="chip" data-min="15">15m</div>
+          <div class="chip active" data-min="30">30m</div>
+          <div class="chip" data-min="45">45m</div>
+          <div class="chip" data-min="60">1h</div>
+          <div class="chip" data-min="90">1.5h</div>
+          <div class="chip" data-min="120">2h</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-duration-custom">Custom (minutes)</label>
+        <input type="number" min="1" max="480" id="f-duration-custom" placeholder="e.g. 75">
+      </div>
+
+      <input type="hidden" name="duration" id="f-duration" value="30">
+    </form>
+  </section>
+
+</main>
+
+<div class="submit-bar" id="submit-bar" style="display:none;">
+  <button class="btn-secondary" onclick="goBack()">Back</button>
+  <button class="btn-primary" type="submit" form="log-form">Log it</button>
+</div>
+
+<div class="footer-link">
+  <a href="/today">← view today's log</a>
+</div>
+
+<div class="toast" id="toast">Logged ✓</div>
+
+<script>
+  const TREE = {{ tree|tojson }};
+  let state = { parent: null, sub: null };
+
+  function setStep(n) {
+    document.body.className = 'step-' + n;
+    document.getElementById('submit-bar').style.display = (n === 3) ? 'flex' : 'none';
+    const titleEl = document.getElementById('title');
+    const crumbEl = document.getElementById('crumb');
+    if (n === 1) { titleEl.firstChild.nodeValue = 'Quick log '; crumbEl.textContent = ''; }
+    if (n === 2) { titleEl.firstChild.nodeValue = 'Pick subcategory '; crumbEl.textContent = state.parent; }
+    if (n === 3) { titleEl.firstChild.nodeValue = 'Details '; crumbEl.textContent = state.parent + ' › ' + state.sub; }
+  }
+
+  function pickParent(name) {
+    state.parent = name;
+    const subs = TREE[name] || [];
+    const grid = document.getElementById('sub-grid');
+    grid.innerHTML = '';
+    if (subs.length === 0) {
+      // No subs — skip to step 3 with sub = parent
+      state.sub = name;
+      fillStep3();
+      setStep(3);
+      return;
+    }
+    subs.forEach(s => {
+      const btn = document.createElement('button');
+      btn.className = 'btn-card sub';
+      btn.textContent = s;
+      btn.onclick = () => pickSub(s);
+      grid.appendChild(btn);
+    });
+    // Add a "+ new" option so phone users can type a fresh sub if needed
+    const addNew = document.createElement('button');
+    addNew.className = 'btn-card sub';
+    addNew.innerHTML = '+ new subcategory<span class="hint">type a custom name</span>';
+    addNew.onclick = () => {
+      const name = prompt('New subcategory name?');
+      if (name && name.trim()) pickSub(name.trim());
+    };
+    grid.appendChild(addNew);
+    setStep(2);
+  }
+
+  function pickSub(name) {
+    state.sub = name;
+    fillStep3();
+    setStep(3);
+    setTimeout(() => document.getElementById('f-description').focus(), 100);
+  }
+
+  function fillStep3() {
+    document.getElementById('f-category').value = state.parent;
+    document.getElementById('f-subcategory').value = state.sub;
+    document.getElementById('sum-parent').textContent = state.parent;
+    document.getElementById('sum-sub').textContent = state.sub;
+  }
+
+  function goBack() {
+    if (document.body.className === 'step-3') {
+      // Step 3 → step 2 (or step 1 if parent had no subs)
+      if ((TREE[state.parent] || []).length === 0) setStep(1);
+      else setStep(2);
+    } else if (document.body.className === 'step-2') {
+      setStep(1);
+    }
+  }
+
+  // Duration chips
+  document.querySelectorAll('#duration-chips .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#duration-chips .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      document.getElementById('f-duration').value = chip.dataset.min;
+      document.getElementById('f-duration-custom').value = '';
+    });
+  });
+  document.getElementById('f-duration-custom').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    if (v > 0) {
+      document.querySelectorAll('#duration-chips .chip').forEach(c => c.classList.remove('active'));
+      document.getElementById('f-duration').value = v;
+    }
+  });
+
+  function submitForm(e) {
+    e.preventDefault();
+    const form = document.getElementById('log-form');
+    const data = new FormData(form);
+    fetch('/manual', { method: 'POST', body: data })
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        showToast('Logged ✓');
+        // Reset for the next entry
+        setTimeout(() => {
+          state = { parent: null, sub: null };
+          document.getElementById('f-description').value = '';
+          document.getElementById('f-duration-custom').value = '';
+          document.querySelectorAll('#duration-chips .chip').forEach(c => c.classList.remove('active'));
+          document.querySelector('#duration-chips .chip[data-min="30"]').classList.add('active');
+          document.getElementById('f-duration').value = '30';
+          setStep(1);
+        }, 800);
+      })
+      .catch(err => showToast('Error: ' + err.message, true));
+    return false;
+  }
+
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = isError ? '#5a1a1a' : 'var(--success)';
+    t.style.color = isError ? '#f7c8c8' : '#c8f7d4';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  setStep(1);
+
+  // -------- Clock in/out --------
+  function toggleClock() {
+    fetch('/api/clock/toggle', { method: 'POST' })
+      .then(r => r.json()).then(st => {
+        const inNow = !!st.clocked_in;
+        document.getElementById('clock-dot').classList.toggle('in', inNow);
+        document.getElementById('clock-text').textContent = inNow ? 'Clocked in' : 'Clocked out';
+        const btn = document.getElementById('clock-btn');
+        btn.textContent = inNow ? 'Clock out' : 'Clock in';
+        btn.classList.toggle('is-in', inNow);
+        showToast(inNow ? 'Clocked in ✓' : 'Clocked out ✓');
+      })
+      .catch(err => showToast('Error: ' + err.message, true));
+  }
+
+  // -------- Mode tabs --------
+  function switchMode(mode) {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+    document.getElementById('mode-past').style.display = (mode === 'past') ? '' : 'none';
+    document.getElementById('mode-timer').style.display = (mode === 'timer') ? '' : 'none';
+    document.getElementById('submit-bar').style.display = 'none';
+    if (mode === 'past') setStep(1);
+  }
+
+  // -------- Timer picker (reuses step-2 grid as a chooser) --------
+  let tmrPickerFor = null;  // 'parent' or 'sub'
+  function openTimerPicker(which) {
+    tmrPickerFor = which;
+    const grid = document.getElementById('sub-grid');
+    grid.innerHTML = '';
+    const options = which === 'parent'
+      ? Object.keys(TREE)
+      : (TREE[document.getElementById('tmr-category').value] || []);
+    options.forEach(name => {
+      const b = document.createElement('button');
+      b.className = which === 'parent' ? 'btn-card parent' : 'btn-card sub';
+      b.textContent = name;
+      b.onclick = () => pickForTimer(name);
+      grid.appendChild(b);
+    });
+    if (which === 'sub') {
+      const addNew = document.createElement('button');
+      addNew.className = 'btn-card sub';
+      addNew.innerHTML = '+ new subcategory<span class="hint">type a custom name</span>';
+      addNew.onclick = () => { const n = prompt('New subcategory name?'); if (n && n.trim()) pickForTimer(n.trim()); };
+      grid.appendChild(addNew);
+    }
+    document.getElementById('mode-past').style.display = '';
+    document.getElementById('mode-timer').style.display = 'none';
+    setStep(2);
+  }
+  function pickForTimer(name) {
+    if (tmrPickerFor === 'parent') {
+      document.getElementById('tmr-category').value = name;
+      document.getElementById('tmr-parent-label').textContent = name;
+      document.getElementById('tmr-subcategory').value = '';
+      document.getElementById('tmr-sub-label').textContent = 'Choose…';
+      document.getElementById('tmr-sub-btn').disabled = false;
+    } else {
+      document.getElementById('tmr-subcategory').value = name;
+      document.getElementById('tmr-sub-label').textContent = name;
+    }
+    tmrPickerFor = null;
+    document.getElementById('mode-past').style.display = 'none';
+    document.getElementById('mode-timer').style.display = '';
+    setStep(1);  // reset step state since we're done with the picker
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'timer'));
+  }
+
+  function startTimer(e) {
+    e.preventDefault();
+    const cat = document.getElementById('tmr-category').value;
+    const sub = document.getElementById('tmr-subcategory').value || cat;
+    const desc = document.getElementById('tmr-desc').value.trim();
+    if (!cat) { showToast('Pick a category first', true); return false; }
+    if (!desc) { showToast('Add a description', true); return false; }
+    fetch('/api/timer/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({category: cat, subcategory: sub, description: desc}),
+    }).then(r => r.json()).then(_ => location.reload())
+      .catch(err => showToast('Error: ' + err.message, true));
+    return false;
+  }
+
+  function stopTimer() {
+    fetch('/api/timer/stop', {method: 'POST'}).then(r => r.json()).then(_ => location.reload())
+      .catch(err => showToast('Error: ' + err.message, true));
+  }
+
+  // -------- Live elapsed timer --------
+  const elapsedBig = document.getElementById('elapsed-big');
+  if (elapsedBig) {
+    const started = new Date(elapsedBig.dataset.started);
+    const fmt = sec => {
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+      const pad = n => String(n).padStart(2, '0');
+      return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    };
+    const tick = () => elapsedBig.textContent = fmt(Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000)));
+    tick();
+    setInterval(tick, 1000);
+  }
+</script>
+
+</body>
+</html>

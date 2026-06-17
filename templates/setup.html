@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Set up — Otishi Time Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg:#0f1115; --panel:#181b22; --panel-2:#1f232c; --border:#2a2f3a;
+      --text:#e6e8ee; --muted:#8b93a7; --accent:#7aa2f7; --accent-2:#9ece6a;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+      font:15px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif;
+      display:flex; align-items:flex-start; justify-content:center; padding:48px 20px; }
+    .wrap { width:100%; max-width:640px; }
+    h1 { font-size:24px; margin:0 0 6px; }
+    .sub { color:var(--muted); margin:0 0 28px; }
+    .q { font-size:13px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); margin:0 0 12px; }
+    .cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+    .card {
+      background:var(--panel); border:2px solid var(--border); border-radius:12px;
+      padding:18px; cursor:pointer; transition:border-color .1s, background .1s;
+    }
+    .card:hover { background:var(--panel-2); }
+    .card.sel { border-color:var(--accent); background:var(--panel-2); }
+    .card .nm { font-size:17px; font-weight:700; }
+    .card .role { color:var(--accent-2); font-size:13px; margin-top:2px; font-weight:600; }
+    .card .ctx { color:var(--muted); font-size:12px; margin-top:8px; line-height:1.4;
+      display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    .card.other { grid-column:1 / -1; }
+    .custom { display:none; background:var(--panel); border:1px solid var(--border);
+      border-radius:12px; padding:18px; margin-bottom:14px; }
+    .custom.show { display:block; }
+    .custom label { display:block; font-size:12px; color:var(--muted); text-transform:uppercase;
+      letter-spacing:0.04em; margin:0 0 6px; }
+    .custom input[type=text] { width:100%; background:var(--bg); border:1px solid var(--border);
+      color:var(--text); padding:10px 12px; border-radius:8px; font-size:14px; margin-bottom:16px; font-family:inherit; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { background:var(--bg); border:1px solid var(--border); color:var(--text);
+      padding:8px 14px; border-radius:999px; font-size:13px; cursor:pointer; user-select:none; }
+    .chip.on { background:var(--accent-2); color:#0f1115; border-color:var(--accent-2); font-weight:600; }
+    .actions { margin-top:24px; display:flex; justify-content:flex-end; }
+    .btn { background:var(--accent); color:#0f1115; border:none; border-radius:10px;
+      padding:13px 28px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; }
+    .btn:disabled { opacity:0.4; cursor:not-allowed; }
+    .note { color:var(--muted); font-size:12px; margin-top:14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>⏱ Welcome to the Otishi Time Tracker</h1>
+    <p class="sub">Quick one-time setup so it categorizes your work accurately. You can change this later.</p>
+
+    <p class="q">Who are you?</p>
+    <div class="cards" id="cards">
+      {% for pid, p in profiles.items() %}
+      <div class="card" data-id="{{ pid }}" onclick="pick('{{ pid }}')">
+        <div class="nm">{{ p.label }}</div>
+        <div class="role">{{ p.role }}</div>
+        <div class="ctx">{{ p.user_context }}</div>
+      </div>
+      {% endfor %}
+      <div class="card other" data-id="__other__" onclick="pick('__other__')">
+        <div class="nm">+ Someone else</div>
+        <div class="role">Pick your focus areas</div>
+      </div>
+    </div>
+
+    <div class="custom" id="custom">
+      <label>Your name</label>
+      <input type="text" id="custom-name" placeholder="e.g. Alex">
+      <label>What do you primarily work on? (tap all that apply)</label>
+      <div class="chips" id="chips">
+        {% for area in task_areas %}
+        <div class="chip" data-area="{{ area }}" onclick="this.classList.toggle('on')">{{ area }}</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if not has_key %}
+    <p class="q" style="margin-top:28px;">Your Anthropic API key</p>
+    <div class="custom show" style="margin-bottom:0;">
+      <label>Paste the key Bentley sent you in Slack</label>
+      <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      <p class="note" style="margin:8px 0 0;">Stored only on this computer. Needed so the app can categorize your screenshots.</p>
+    </div>
+    {% endif %}
+
+    <div class="actions">
+      <button class="btn" id="save" disabled onclick="save()">Get started</button>
+    </div>
+    <p class="note">This sets the hint the AI uses to categorize your screens and saves your key locally. Your data stays on this machine.</p>
+  </div>
+
+  <script>
+    let selected = null;
+    function pick(id) {
+      selected = id;
+      document.querySelectorAll('.card').forEach(c => c.classList.toggle('sel', c.dataset.id === id));
+      document.getElementById('custom').classList.toggle('show', id === '__other__');
+      document.getElementById('save').disabled = false;
+    }
+    function save() {
+      let payload;
+      if (selected === '__other__') {
+        const areas = Array.from(document.querySelectorAll('.chip.on')).map(c => c.dataset.area);
+        payload = { profile_id: 'custom', display_name: document.getElementById('custom-name').value || 'Team member', task_areas: areas };
+      } else {
+        payload = { profile_id: selected };
+      }
+      const keyField = document.getElementById('api-key');
+      if (keyField) {
+        const key = keyField.value.trim();
+        if (!key) { alert('Paste your Anthropic API key (Bentley sent it in Slack).'); return; }
+        payload.api_key = key;
+      }
+      const btn = document.getElementById('save');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      fetch('/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+        .then(r => r.json()).then(() => location.href = '/today')
+        .catch(err => { alert('Setup failed: ' + err); btn.disabled = false; btn.textContent = 'Get started'; });
+    }
+  </script>
+</body>
+</html>

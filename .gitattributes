@@ -1,0 +1,6 @@
+# Shell scripts MUST keep LF endings or bash on Mac fails with "bad interpreter".
+*.sh text eol=lf
+# Windows scripts stay CRLF.
+*.bat text eol=crlf
+# Everything else: normalize to LF in the repo.
+* text=auto eol=lf

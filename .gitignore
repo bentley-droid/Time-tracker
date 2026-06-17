@@ -1,0 +1,17 @@
+config.json
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.*
+backups/
+screenshots/
+.venv/
+__pycache__/
+*.pyc
+tracker.log
+.tracker.pid
+
+# config.json is per-machine (created from config.example.json on first run).
+# config.example.json IS tracked — it seeds new installs.
+!config.example.json

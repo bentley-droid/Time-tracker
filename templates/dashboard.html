@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Time Tracker — {{ date_str }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #181b22;
+      --panel-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e6e8ee;
+      --muted: #8b93a7;
+      --accent: #7aa2f7;
+      --accent-2: #9ece6a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    nav a { color: var(--muted); text-decoration: none; margin-right: 12px; padding: 6px 10px; border-radius: 6px; }
+    nav a.active { background: var(--panel-2); color: var(--text); }
+    nav a:hover { color: var(--text); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+    .date-nav { display: flex; align-items: center; gap: 8px; }
+    .date-nav a, .btn { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; text-decoration: none; cursor: pointer; font-size: 13px; }
+    .date-nav a:hover, .btn:hover { background: var(--panel-2); }
+    .btn-primary { background: var(--accent); color: #0f1115; border-color: var(--accent); }
+    .btn-primary:hover { background: #8fb3ff; }
+    .summary-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+    .total { font-size: 32px; font-weight: 700; }
+    .muted { color: var(--muted); }
+    .cat-list { display: grid; gap: 12px; }
+    .cat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .cat-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; }
+    .cat-name { font-weight: 600; font-size: 16px; }
+    .cat-stats { color: var(--muted); font-size: 13px; }
+    .bar { height: 6px; background: var(--panel-2); border-radius: 3px; margin: 10px 0 14px; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--accent); }
+    .bar-sub > div { background: var(--accent-2); }
+    .drill { display: none; margin-top: 12px; padding-left: 8px; border-left: 2px solid var(--border); }
+    .cat.open .drill { display: block; }
+    .cat-head .arrow { color: var(--muted); transition: transform 0.15s; display: inline-block; margin-right: 6px; }
+    .cat.open .cat-head .arrow { transform: rotate(90deg); }
+    .sub { padding: 8px 0; border-top: 1px solid var(--border); }
+    .sub:first-child { border-top: none; }
+    .sub-head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+    .sub-name { font-weight: 500; font-size: 14px; }
+    .sub-stats { color: var(--muted); font-size: 12px; }
+    .entries { display: none; margin-top: 8px; padding-left: 12px; }
+    .sub.open .entries { display: block; }
+    .entry { display: grid; grid-template-columns: 60px 1fr auto; gap: 10px; padding: 6px 0; border-top: 1px dashed var(--border); align-items: start; }
+    .entry-time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+    .entry-desc { font-size: 13px; }
+    .entry-source { font-size: 10px; color: var(--muted); margin-left: 6px; padding: 1px 5px; border-radius: 3px; background: var(--panel-2); }
+    .entry-actions a, .entry-actions button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 6px; }
+    .entry-actions a:hover, .entry-actions button:hover { color: var(--text); }
+    .manual-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 24px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr 80px auto; gap: 8px; align-items: center; }
+    .form-row input, .form-row select, .form-row textarea {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 8px 10px; border-radius: 6px; font-size: 13px; width: 100%;
+    }
+    details summary { cursor: pointer; padding: 4px 0; color: var(--muted); }
+    details summary:hover { color: var(--text); }
+    .empty { text-align: center; padding: 40px; color: var(--muted); }
+    img.thumb { max-width: 80px; max-height: 50px; border-radius: 4px; vertical-align: middle; cursor: zoom-in; }
+    .pending-banner {
+      background: linear-gradient(135deg, #3a2f1a, #2a2410);
+      border: 1px solid #6b5a1f; border-radius: 10px; padding: 14px 18px;
+      margin-bottom: 20px;
+    }
+    .pending-banner h3 { margin: 0 0 6px; color: #e0af68; font-size: 14px; }
+    .pending-banner .pending-item {
+      background: rgba(0,0,0,0.25); border-radius: 6px; padding: 10px;
+      margin-top: 8px; display: grid; grid-template-columns: 1fr; gap: 6px;
+    }
+    .pending-banner .pf-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto auto; gap: 6px; }
+    .pending-banner select, .pending-banner input {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 8px; border-radius: 5px; font-size: 12px; width: 100%;
+    }
+    .pending-banner button { font-size: 12px; padding: 6px 10px; }
+    .pending-banner .meta { color: var(--muted); font-size: 12px; }
+
+    /* Timer */
+    .timer-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; margin-bottom: 20px;
+    }
+    .timer-card.running {
+      background: linear-gradient(135deg, #1a3a4a, #15293a);
+      border-color: var(--accent);
+    }
+    .timer-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; align-items: center; }
+    .timer-row select, .timer-row input {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 9px 11px; border-radius: 6px; font-size: 13px; width: 100%;
+    }
+    .timer-running {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    }
+    .timer-running .info { flex: 1; min-width: 0; }
+    .timer-running .info .cat { font-size: 13px; color: var(--accent); font-weight: 600; }
+    .timer-running .info .desc { font-size: 15px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .timer-running .elapsed { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .btn-danger { background: #e0606e; color: #0f1115; border-color: #e0606e; }
+    .btn-danger:hover { background: #f07a87; }
+    .timer-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+
+    /* Edit modal */
+    dialog.edit-modal {
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 0; max-width: 500px; width: calc(100% - 32px);
+    }
+    dialog.edit-modal::backdrop { background: rgba(0,0,0,0.65); }
+    .edit-modal-body { padding: 20px; }
+    .edit-modal h3 { margin: 0 0 16px; font-size: 16px; }
+    .edit-modal .field { margin-bottom: 12px; }
+    .edit-modal label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .edit-modal input, .edit-modal select, .edit-modal textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 9px 11px; border-radius: 6px; font-size: 14px;
+      font-family: inherit;
+    }
+    .edit-modal textarea { min-height: 70px; resize: vertical; }
+    .edit-modal-actions {
+      padding: 14px 20px; border-top: 1px solid var(--border);
+      display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    }
+    .edit-modal-actions .right { display: flex; gap: 8px; }
+
+    .entry { cursor: pointer; }
+    .entry:hover { background: rgba(255,255,255,0.02); }
+
+    .stop-btn {
+      margin-left: auto; color: var(--danger);
+      text-decoration: none; padding: 6px 12px;
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px;
+    }
+    .stop-btn:hover { background: rgba(224,96,110,0.1); border-color: var(--danger); }
+
+    /* Clock in/out control */
+    .clock-control { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .clock-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--panel); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: 999px; font-size: 13px; font-variant-numeric: tabular-nums;
+    }
+    .clock-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+    .clock-pill.in .clock-dot { background: var(--accent-2); box-shadow: 0 0 0 3px rgba(158,206,106,0.2); }
+    .clock-btn {
+      border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px;
+      font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+      background: var(--accent-2); color: #0f1115;
+    }
+    .clock-btn.is-in { background: var(--panel); color: var(--text); }
+    .clock-btn:hover { filter: brightness(1.1); }
+    .sched-link { color: var(--muted); text-decoration: none; font-size: 13px; padding: 6px 8px; border-radius: 6px; }
+    .sched-link:hover { color: var(--text); background: var(--panel); }
+    /* with the clock-control carrying the auto-margin, the stop button sits right after it */
+    header .stop-btn { margin-left: 0; }
+
+    dialog.schedule-modal {
+      background: var(--panel); color: var(--text); border: 1px solid var(--border);
+      border-radius: 12px; padding: 0; max-width: 460px; width: calc(100% - 32px);
+    }
+    dialog.schedule-modal::backdrop { background: rgba(0,0,0,0.65); }
+    .schedule-modal .body { padding: 20px; }
+    .schedule-modal h3 { margin: 0 0 4px; font-size: 16px; }
+    .schedule-modal .hint { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+    .sched-master { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 14px; }
+    .sched-row { display: grid; grid-template-columns: 44px 28px 1fr 12px 1fr; gap: 8px; align-items: center; margin-bottom: 7px; }
+    .sched-row .dow { font-size: 13px; color: var(--muted); text-transform: uppercase; }
+    .sched-row input[type=time] {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 8px; border-radius: 6px; font-size: 13px; width: 100%; font-family: inherit;
+    }
+    .sched-row.off input[type=time] { opacity: 0.4; }
+    .schedule-modal .actions { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+    .stopped-screen {
+      min-height: 80vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; gap: 16px;
+      color: var(--text);
+    }
+    .stopped-screen .big { font-size: 56px; opacity: 0.6; }
+    .stopped-screen h2 { margin: 0; font-size: 22px; font-weight: 600; }
+    .stopped-screen p { color: var(--muted); margin: 0; max-width: 460px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⏱ Otishi Time Tracker</h1>
+  <nav>
+    <a href="/today" class="{{ 'active' if view == 'day' }}">Day</a>
+    <a href="/week" class="{{ 'active' if view == 'week' }}">Week</a>
+    <a href="/timeline">Timeline</a>
+    <a href="/weekly-report">Weekly Report</a>
+    <a href="/log">📱 Quick log</a>
+  </nav>
+  <div class="clock-control">
+    <span class="clock-pill {{ 'in' if clock and clock.clocked_in }}" id="clock-pill"
+          data-since="{{ clock.since if clock and clock.since else '' }}">
+      <span class="clock-dot"></span>
+      <span id="clock-text">{{ 'Clocked in' if clock and clock.clocked_in else 'Clocked out' }}</span>
+    </span>
+    <button class="clock-btn {{ 'is-in' if clock and clock.clocked_in }}" id="clock-btn" onclick="toggleClock()">
+      {{ 'Clock out' if clock and clock.clocked_in else 'Clock in' }}
+    </button>
+    <a href="#" class="sched-link" onclick="openSchedule(); return false;" title="Edit auto work schedule">⚙ Schedule</a>
+  </div>
+  <a href="#" class="stop-btn" onclick="stopTracker(); return false;"
+     title="Stop the tracker (no more screenshots until you launch it again)">⏻ Stop tracker</a>
+</header>
+
+<div class="container">
+
+  <div class="topbar">
+    <div class="date-nav">
+      <a href="?date={{ prev_date }}">←</a>
+      <strong>{{ date_str }}</strong>
+      <a href="?date={{ next_date }}">→</a>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a class="btn" href="/export.csv?view={{ view }}&date={{ iso_date }}">↓ CSV</a>
+      <form action="/capture-now" method="post" style="margin:0;">
+        <button class="btn btn-primary" type="submit">Capture now</button>
+      </form>
+    </div>
+  </div>
+
+  {% if pending %}
+  <div class="pending-banner">
+    <h3>⏸ {{ pending|length }} idle period{{ '' if pending|length == 1 else 's' }} need backfill</h3>
+    <div class="meta">The tracker noticed your screen didn't change for a while. Fill in what you were actually doing, or keep them as "Away".</div>
+    {% for p in pending %}
+    <div class="pending-item">
+      <div class="meta">
+        Away from {{ p.start_ts[11:16] }} → {{ p.end_ts[11:16] }} on {{ p.start_ts[:10] }}
+        (~{{ p.entry_ids|length * (summary.total_minutes // (summary.parents|sum(attribute='subs')|length or 1) if false else 15) }} min,
+        {{ p.entry_ids|length }} capture{{ '' if p.entry_ids|length == 1 else 's' }})
+      </div>
+      <form action="/api/prompts/{{ p.id }}/resolve" method="post" class="pf-row pending-form" data-pid="{{ p.id }}">
+        <select name="category" class="pf-parent">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+        <input name="subcategory" class="pf-sub" placeholder="Subcategory">
+        <input name="description" placeholder="What were you doing?">
+        <button type="submit" class="btn btn-primary">Backfill</button>
+        <button type="submit" name="keep_as_away" value="1" class="btn">Keep as Away</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  <script>
+    document.querySelectorAll('.pending-form').forEach(form => {
+      const parent = form.querySelector('.pf-parent');
+      const sub = form.querySelector('.pf-sub');
+      const sync = () => {
+        const subs = (window.TREE_DATA || {{ tree|tojson }})[parent.value] || [];
+        if (subs.length && !sub.value) sub.value = subs[0];
+      };
+      parent.addEventListener('change', sync);
+      sync();
+    });
+  </script>
+  {% endif %}
+
+  <div class="timer-card {{ 'running' if active_timer }}" id="timer-card">
+    {% if active_timer %}
+      <div class="timer-title">⏱ Timer running</div>
+      <div class="timer-running">
+        <div class="info">
+          <div class="cat">{{ active_timer.category }} › {{ active_timer.subcategory }}</div>
+          <div class="desc">{{ active_timer.description or '(no description)' }}</div>
+        </div>
+        <div class="elapsed" id="elapsed" data-started="{{ active_timer.started_at }}">00:00</div>
+        <button class="btn btn-danger" onclick="stopTimer()">Stop</button>
+      </div>
+    {% else %}
+      <div class="timer-title">⏱ Start a timer</div>
+      <form id="timer-start-form" class="timer-row" onsubmit="return startTimer(event)">
+        <select name="category" id="t-parent" required onchange="updateTimerSubs()">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+        <input name="subcategory" id="t-sub" list="t-sub-options" placeholder="Subcategory">
+        <datalist id="t-sub-options"></datalist>
+        <input name="description" placeholder="What are you working on?" required>
+        <button class="btn btn-primary" type="submit">Start</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="summary-card">
+    <div class="total">{{ summary.total_hours }} <span class="muted" style="font-size:18px;">hours tracked</span></div>
+    <div class="muted">{{ summary.total_minutes }} min across {{ summary.parents|length }} parent categor{{ 'y' if summary.parents|length == 1 else 'ies' }}</div>
+  </div>
+
+  <details class="manual-form">
+    <summary>+ Add manual entry (meetings, calls, off-screen work)</summary>
+    <form action="/manual" method="post" style="margin-top:12px;">
+      <div class="form-row">
+        <select name="category" id="parent-select" required onchange="updateSubs()">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+        <input name="subcategory" id="sub-input" list="sub-options" placeholder="Subcategory (type new or pick)">
+        <datalist id="sub-options"></datalist>
+        <input name="description" placeholder="What were you doing?" required>
+        <input name="duration" type="number" value="30" min="1" max="600">
+        <button class="btn btn-primary" type="submit">Log</button>
+      </div>
+      <div style="margin-top:8px;">
+        <input name="timestamp" type="datetime-local" style="max-width:240px;">
+        <span class="muted">(leave blank for now)</span>
+      </div>
+    </form>
+  </details>
+
+  <script>
+    window.TREE = {{ tree|tojson }};
+    function updateSubs() {
+      const parent = document.getElementById('parent-select').value;
+      const dl = document.getElementById('sub-options');
+      dl.innerHTML = '';
+      (window.TREE[parent] || []).forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        dl.appendChild(opt);
+      });
+    }
+    document.addEventListener('DOMContentLoaded', updateSubs);
+  </script>
+
+  {% if not summary.parents %}
+    <div class="empty">No entries yet for this period. The tracker logs automatically while it's running.</div>
+  {% endif %}
+
+  <div class="cat-list">
+    {% for parent in summary.parents %}
+    <div class="cat">
+      <div class="cat-head" onclick="this.parentElement.classList.toggle('open')">
+        <div>
+          <div class="cat-name"><span class="arrow">›</span>{{ parent.category }}</div>
+          <div class="cat-stats">{{ parent.hours }} hrs · {{ parent.minutes }} min · {{ parent.subs|length }} subcategor{{ 'y' if parent.subs|length == 1 else 'ies' }}</div>
+        </div>
+        <div class="cat-stats">{{ parent.percent }}%</div>
+      </div>
+      <div class="bar"><div style="width: {{ parent.percent }}%;"></div></div>
+
+      <div class="drill">
+        {% for sub in parent.subs %}
+        <div class="sub">
+          <div class="sub-head" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">
+            <div>
+              <div class="sub-name">{{ sub.name }}</div>
+              <div class="sub-stats">{{ sub.hours }} hrs · {{ sub.entries|length }} entr{{ 'y' if sub.entries|length == 1 else 'ies' }}</div>
+            </div>
+            <div class="sub-stats">{{ sub.percent }}%</div>
+          </div>
+          <div class="bar bar-sub"><div style="width: {{ sub.percent }}%;"></div></div>
+
+          <div class="entries">
+            {% for e in sub.entries %}
+            <div class="entry" onclick="openEditModal({{ e.id }}, '{{ parent.category|e }}', '{{ sub.name|e }}', {{ e.description|tojson }}, 15)">
+              <div class="entry-time">{{ e.time }}</div>
+              <div class="entry-desc">
+                {{ e.description }}
+                <span class="entry-source">{{ e.source }}</span>
+                {% if e.screenshot %}<a href="/screenshot/{{ e.screenshot }}" target="_blank" onclick="event.stopPropagation()"><img class="thumb" src="/screenshot/{{ e.screenshot }}"></a>{% endif %}
+              </div>
+              <div class="entry-actions muted" style="font-size:12px;">edit ›</div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<dialog class="edit-modal" id="edit-modal">
+  <form id="edit-form" method="post">
+    <div class="edit-modal-body">
+      <h3>Edit entry</h3>
+      <div class="field">
+        <label>Category</label>
+        <select name="category" id="em-parent" onchange="emUpdateSubs()">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Subcategory</label>
+        <input name="subcategory" id="em-sub" list="em-sub-options">
+        <datalist id="em-sub-options"></datalist>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea name="description" id="em-desc"></textarea>
+      </div>
+      <div class="field">
+        <label>Duration (minutes)</label>
+        <input type="number" name="duration" id="em-duration" min="1" max="600">
+      </div>
+    </div>
+    <div class="edit-modal-actions">
+      <button type="button" class="btn btn-danger" onclick="deleteEntry()">Delete</button>
+      <div class="right">
+        <button type="button" class="btn" onclick="document.getElementById('edit-modal').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="schedule-modal" id="schedule-modal">
+  <div class="body">
+    <h3>Auto work schedule</h3>
+    <div class="hint">Automatically clocks you in at each window's start and out at its end. You can always override with the Clock in/out button.</div>
+    <label class="sched-master"><input type="checkbox" id="sched-auto"> Enable automatic scheduling</label>
+    <div id="sched-rows"></div>
+  </div>
+  <div class="actions">
+    <button class="btn" onclick="document.getElementById('schedule-modal').close()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveSchedule()">Save</button>
+  </div>
+</dialog>
+
+<script>
+  // -------- Clock in/out --------
+  const DOW = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+
+  function fmtDur(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+  const clockPill = document.getElementById('clock-pill');
+  function renderClockSession() {
+    const since = clockPill.dataset.since;
+    if (clockPill.classList.contains('in') && since) {
+      const secs = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
+      document.getElementById('clock-text').textContent = 'Clocked in · ' + fmtDur(secs);
+    }
+  }
+  renderClockSession();
+  setInterval(renderClockSession, 30000);
+
+  function applyClockState(st) {
+    const inNow = !!st.clocked_in;
+    clockPill.classList.toggle('in', inNow);
+    clockPill.dataset.since = st.since || '';
+    document.getElementById('clock-text').textContent = inNow ? 'Clocked in' : 'Clocked out';
+    const btn = document.getElementById('clock-btn');
+    btn.textContent = inNow ? 'Clock out' : 'Clock in';
+    btn.classList.toggle('is-in', inNow);
+    renderClockSession();
+  }
+  function toggleClock() {
+    fetch('/api/clock/toggle', { method: 'POST' })
+      .then(r => r.json()).then(applyClockState)
+      .catch(err => alert('Clock toggle failed: ' + err));
+  }
+
+  // -------- Schedule editor --------
+  function openSchedule() {
+    fetch('/api/schedule').then(r => r.json()).then(sched => {
+      document.getElementById('sched-auto').checked = !!sched.auto;
+      const rows = document.getElementById('sched-rows');
+      rows.innerHTML = '';
+      const days = sched.days || {};
+      DOW.forEach(([key, label]) => {
+        const d = days[key] || { on: false, start: '09:00', end: '18:00' };
+        const row = document.createElement('div');
+        row.className = 'sched-row' + (d.on ? '' : ' off');
+        row.innerHTML = `
+          <span class="dow">${label}</span>
+          <input type="checkbox" data-day="${key}" class="sched-on" ${d.on ? 'checked' : ''}>
+          <input type="time" data-day="${key}" class="sched-start" value="${d.start || '09:00'}">
+          <span style="text-align:center;color:var(--muted)">–</span>
+          <input type="time" data-day="${key}" class="sched-end" value="${d.end || '18:00'}">`;
+        rows.appendChild(row);
+      });
+      rows.querySelectorAll('.sched-on').forEach(cb => cb.addEventListener('change', e => {
+        e.target.closest('.sched-row').classList.toggle('off', !e.target.checked);
+      }));
+      document.getElementById('schedule-modal').showModal();
+    });
+  }
+  function saveSchedule() {
+    const days = {};
+    DOW.forEach(([key]) => {
+      days[key] = {
+        on: document.querySelector(`.sched-on[data-day="${key}"]`).checked,
+        start: document.querySelector(`.sched-start[data-day="${key}"]`).value || '09:00',
+        end: document.querySelector(`.sched-end[data-day="${key}"]`).value || '18:00',
+      };
+    });
+    fetch('/api/schedule', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto: document.getElementById('sched-auto').checked, days }),
+    }).then(r => r.json()).then(() => document.getElementById('schedule-modal').close())
+      .catch(err => alert('Save failed: ' + err));
+  }
+  document.getElementById('schedule-modal').addEventListener('click', e => {
+    if (e.target.id === 'schedule-modal') e.target.close();
+  });
+
+  // -------- Timer --------
+  function fmtElapsed(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+  const elapsedEl = document.getElementById('elapsed');
+  if (elapsedEl) {
+    const started = new Date(elapsedEl.dataset.started);
+    const tick = () => elapsedEl.textContent = fmtElapsed(Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000)));
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  function updateTimerSubs() {
+    const p = document.getElementById('t-parent').value;
+    const dl = document.getElementById('t-sub-options');
+    dl.innerHTML = '';
+    (window.TREE[p] || []).forEach(s => { const o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+  }
+  if (document.getElementById('t-parent')) updateTimerSubs();
+
+  function startTimer(e) {
+    e.preventDefault();
+    const f = e.target;
+    fetch('/api/timer/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        category: f.category.value, subcategory: f.subcategory.value, description: f.description.value,
+      }),
+    }).then(r => r.json()).then(_ => location.reload());
+    return false;
+  }
+  function stopTimer() {
+    fetch('/api/timer/stop', {method: 'POST'}).then(r => r.json()).then(_ => location.reload());
+  }
+
+  // -------- Stop tracker --------
+  function stopTracker() {
+    if (!confirm('Stop the tracker?\n\nIt will no longer capture screenshots until you launch it again from your desktop icon (or Otishi_Tracker.bat).')) return;
+    fetch('/api/shutdown', {method: 'POST'})
+      .then(r => r.json().catch(() => ({})))
+      .catch(() => ({}))
+      .finally(() => {
+        // Server is dying — render a clean "stopped" landing screen so the user
+        // knows it worked and how to bring it back.
+        document.body.innerHTML = `
+          <div class="stopped-screen">
+            <div class="big">⏻</div>
+            <h2>Tracker stopped</h2>
+            <p>No more auto-screenshots until you launch it again.</p>
+            <p>Click your <strong>Otishi Time Tracker</strong> desktop icon or taskbar shortcut to start it back up.</p>
+            <p style="margin-top:16px;"><a href="/" style="color:#7aa2f7;">try reconnecting →</a></p>
+          </div>
+        `;
+        document.title = 'Tracker stopped';
+      });
+  }
+
+  // -------- Edit modal --------
+  let currentEntryId = null;
+
+  function openEditModal(id, parent, sub, description, duration) {
+    currentEntryId = id;
+    document.getElementById('em-parent').value = parent;
+    emUpdateSubs();
+    document.getElementById('em-sub').value = sub;
+    document.getElementById('em-desc').value = description || '';
+    document.getElementById('em-duration').value = duration;
+    document.getElementById('edit-form').action = `/entry/${id}/edit`;
+    document.getElementById('edit-modal').showModal();
+  }
+  function emUpdateSubs() {
+    const parent = document.getElementById('em-parent').value;
+    const dl = document.getElementById('em-sub-options');
+    dl.innerHTML = '';
+    (window.TREE[parent] || []).forEach(s => { const o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+  }
+  function deleteEntry() {
+    if (!currentEntryId) return;
+    if (!confirm('Delete this entry? This cannot be undone.')) return;
+    const f = document.createElement('form');
+    f.method = 'post';
+    f.action = `/entry/${currentEntryId}/delete`;
+    document.body.appendChild(f);
+    f.submit();
+  }
+  // Close on backdrop click
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target.id === 'edit-modal') e.target.close();
+  });
+</script>
+
+</body>
+</html>
