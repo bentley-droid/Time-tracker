@@ -37,6 +37,12 @@
     .step-2 header .back, .step-3 header .back { display: inline-flex; }
     header h1 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; }
     header .crumb { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: 6px; }
+    header .to-dash {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      text-decoration: none; padding: 9px 14px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+    }
+    header .to-dash:active { background: var(--panel-2); }
 
     main { flex: 1; padding: 18px; }
     .step { display: none; }
@@ -179,6 +185,7 @@
 <header>
   <button class="back" onclick="goBack()" aria-label="Back">←</button>
   <h1 id="title">Quick log <span class="crumb" id="crumb"></span></h1>
+  <a href="/today" class="to-dash">← Dashboard</a>
 </header>
 
 <div class="clock-bar" id="clock-bar">

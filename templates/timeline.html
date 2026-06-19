@@ -79,6 +79,7 @@
     .lanes {
       position: relative;
       border-left: 1px solid var(--border);
+      cursor: copy;  /* empty space is clickable to add a block */
     }
     .lanes.day-col { border-right: 1px solid var(--border); }
     .gridline {
@@ -241,6 +242,7 @@
       <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=sub" class="{{ 'active' if granularity == 'sub' }}" title="Group consecutive entries with same parent + subcategory">Sub</a>
       <a href="?{{ 'view=' + view + '&' if view == 'week' }}date={{ iso_date }}&granularity=raw" class="{{ 'active' if granularity == 'raw' }}" title="Every individual capture as its own block">Raw</a>
     </div>
+    <span class="toggle-label" style="margin-left:auto; text-transform:none; letter-spacing:0; color:var(--muted);">💡 Click an empty spot to add a block · drag to move · drag the bottom edge to resize</span>
   </div>
 
   {% set total_min = window_end - window_start %}
@@ -356,6 +358,46 @@
       <div class="right">
         <button type="button" class="btn" onclick="document.getElementById('edit-modal').close()">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="edit-modal" id="add-modal">
+  <form id="add-form" onsubmit="return saveNew(event)">
+    <div class="edit-modal-body">
+      <h3>Add entry <span id="am-when" style="color:var(--muted); font-weight:400; font-size:13px;"></span></h3>
+      <div class="field">
+        <label>Category</label>
+        <select id="am-parent" onchange="amUpdateSubs()">
+          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Subcategory</label>
+        <input id="am-sub" list="am-sub-options" placeholder="optional">
+        <datalist id="am-sub-options"></datalist>
+      </div>
+      <div class="field">
+        <label>What were you doing?</label>
+        <textarea id="am-desc" placeholder="e.g. Call with a supplier"></textarea>
+      </div>
+      <div class="field" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label>Start time</label>
+          <input type="time" id="am-start">
+        </div>
+        <div>
+          <label>Duration (minutes)</label>
+          <input type="number" id="am-duration" min="5" max="600" step="5" value="30">
+        </div>
+      </div>
+    </div>
+    <div class="edit-modal-actions">
+      <span class="muted" id="am-date" style="font-size:12px; color:var(--muted);"></span>
+      <div class="right">
+        <button type="button" class="btn" onclick="document.getElementById('add-modal').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add</button>
       </div>
     </div>
   </form>
@@ -533,9 +575,67 @@
     f.method = 'post'; f.action = `/entry/${currentEntryId}/delete`;
     document.body.appendChild(f); f.submit();
   }
-  ['edit-modal','detail-modal'].forEach(id => {
+  ['edit-modal','detail-modal','add-modal'].forEach(id => {
     document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) e.target.close(); });
   });
+
+  // ---- Click an empty timeline spot to add a block ----
+  (function enableClickToAdd() {
+    const PX_PER_MIN = 1.5;
+    const WINDOW_START = {{ window_start }};
+    const ADD_SNAP = 15;
+    let addDate = null;
+    const pad = n => String(n).padStart(2, '0');
+    function fmt12(min) {
+      min = ((Math.round(min) % 1440) + 1440) % 1440;
+      let h = Math.floor(min / 60), m = min % 60;
+      const ap = h < 12 ? 'AM' : 'PM'; let dh = h % 12; if (dh === 0) dh = 12;
+      return `${dh}:${pad(m)} ${ap}`;
+    }
+    window.amUpdateSubs = function () {
+      const parent = document.getElementById('am-parent').value;
+      const dl = document.getElementById('am-sub-options');
+      dl.innerHTML = '';
+      (TREE[parent] || []).forEach(s => { const o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+    };
+    window.saveNew = function (e) {
+      e.preventDefault();
+      const parent = document.getElementById('am-parent').value;
+      const sub = document.getElementById('am-sub').value.trim() || parent;
+      const desc = document.getElementById('am-desc').value.trim();
+      const dur = parseInt(document.getElementById('am-duration').value) || 30;
+      const t = document.getElementById('am-start').value || '09:00';
+      fetch('/entry/new', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: parent, subcategory: sub, description: desc, duration_minutes: dur, timestamp: `${addDate}T${t}:00` }),
+      }).then(r => r.json()).then(() => location.reload())
+        .catch(err => alert('Add failed: ' + err));
+      return false;
+    };
+    function openAdd(dateStr, startMin) {
+      addDate = dateStr;
+      document.getElementById('am-start').value = `${pad(Math.floor(startMin / 60))}:${pad(startMin % 60)}`;
+      document.getElementById('am-duration').value = 30;
+      document.getElementById('am-desc').value = '';
+      document.getElementById('am-parent').selectedIndex = 0;
+      amUpdateSubs();
+      const d = new Date(dateStr + 'T00:00:00');
+      document.getElementById('am-when').textContent = '· ' + d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' at ' + fmt12(startMin);
+      document.getElementById('am-date').textContent = dateStr;
+      document.getElementById('add-modal').showModal();
+      setTimeout(() => document.getElementById('am-desc').focus(), 50);
+    }
+    document.querySelectorAll('.lanes[data-col-date]').forEach(col => {
+      col.addEventListener('click', e => {
+        if (suppressClick) { suppressClick = false; return; }   // just finished a drag
+        if (e.target.closest('.entry-block')) return;            // clicked an existing block
+        const y = e.clientY - col.getBoundingClientRect().top;
+        let startMin = Math.round((WINDOW_START + y / PX_PER_MIN) / ADD_SNAP) * ADD_SNAP;
+        startMin = Math.max(0, Math.min(startMin, 1410));
+        openAdd(col.dataset.colDate, startMin);
+      });
+    });
+  })();
 
   function stopTracker() {
     if (!confirm('Stop the tracker?\n\nIt will no longer capture screenshots until you launch it again from your desktop icon.')) return;

@@ -1058,6 +1058,31 @@ def create_app():
         DB_INSTANCE.update_entry(eid, parent, sub, description, duration)
         return redirect(request.referrer or url_for("daily"))
 
+    @app.route("/entry/new", methods=["POST"])
+    def entry_new():
+        """Create an entry from the timeline (click-to-add). JSON:
+        {category, subcategory?, description?, duration_minutes?, timestamp}"""
+        data = request.get_json(silent=True) or {}
+        parent = (data.get("category") or "").strip()
+        if not parent:
+            return jsonify({"error": "category required"}), 400
+        sub = (data.get("subcategory") or parent).strip()
+        description = (data.get("description") or "").strip()
+        try:
+            duration = max(1, min(int(data.get("duration_minutes") or 30), 24 * 60))
+        except (TypeError, ValueError):
+            duration = 30
+        ts_str = data.get("timestamp")
+        try:
+            ts = datetime.fromisoformat(ts_str) if ts_str else datetime.now()
+        except ValueError:
+            return jsonify({"error": "bad timestamp"}), 400
+        DB_INSTANCE.add_category(parent, parent=None, user_added=True)
+        if sub != parent:
+            DB_INSTANCE.add_category(sub, parent=parent, user_added=True)
+        eid = DB_INSTANCE.log_entry(parent, sub, description, 1.0, duration, "manual", None, ts)
+        return jsonify({"ok": True, "id": eid})
+
     @app.route("/entries/move", methods=["POST"])
     def entries_move():
         """Drag/resize a timeline block. Handles single AND merged blocks.
