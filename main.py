@@ -115,18 +115,27 @@ def save_api_key(key: str) -> bool:
 # Screenshot + perceptual hash
 # ---------------------------------------------------------------------------
 
-def capture_screenshot() -> tuple[bytes, str, "Image.Image"]:
-    """Grab all monitors, return (jpeg_bytes, saved_path, PIL Image)."""
+def capture_screenshot() -> tuple[bytes, str, "Image.Image", list]:
+    """Grab all monitors for classification AND a perceptual hash per physical
+    monitor for idle detection. Returns (jpeg_bytes, saved_path, combined PIL
+    Image, [per-monitor hashes]). Per-monitor hashes let us treat the user as
+    active when ANY screen changes (fixes false 'idle' on multi-monitor setups)."""
+    monitor_hashes: list[int] = []
     try:
         import mss
         from PIL import Image
         with mss.mss() as sct:
-            monitor = sct.monitors[0]
-            raw = sct.grab(monitor)
+            # mss.monitors[0] is the union of all screens; [1:] are each physical one.
+            raw = sct.grab(sct.monitors[0])
             img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
+            physical = sct.monitors[1:] if len(sct.monitors) > 1 else sct.monitors[:1]
+            for mon in physical:
+                r = sct.grab(mon)
+                monitor_hashes.append(ahash(Image.frombytes("RGB", r.size, r.bgra, "raw", "BGRX")))
     except Exception:
         from PIL import ImageGrab
         img = ImageGrab.grab(all_screens=True).convert("RGB")
+        monitor_hashes = [ahash(img)]
 
     max_dim = 1600
     if max(img.size) > max_dim:
@@ -139,7 +148,7 @@ def capture_screenshot() -> tuple[bytes, str, "Image.Image"]:
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=75, optimize=True)
-    return buf.getvalue(), str(path), img
+    return buf.getvalue(), str(path), img, monitor_hashes
 
 
 def ahash(img) -> int:
@@ -157,6 +166,15 @@ def ahash(img) -> int:
 
 def hamming(a: int, b: int) -> int:
     return bin(a ^ b).count("1")
+
+
+def monitors_static(prev: list, cur: list, threshold: int) -> bool:
+    """True only if EVERY monitor is unchanged (within threshold) since last capture.
+    If any single screen changed, the user is active -> returns False. A changed
+    monitor count (plugged/unplugged a display) also counts as active."""
+    if not prev or not cur or len(prev) != len(cur):
+        return False
+    return all(hamming(p, c) <= threshold for p, c in zip(prev, cur))
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +627,7 @@ DB_INSTANCE = DB(CONFIG["database_path"])
 # ---------------------------------------------------------------------------
 
 _idle_state = {
-    "last_hash": None,
+    "last_hashes": None,   # list of per-monitor hashes from the previous capture
     "streak": 0,
     "idle_entry_ids": [],
     "idle_start_ts": None,
@@ -709,11 +727,11 @@ def capture_once() -> dict | None:
         active = DB_INSTANCE.get_active_timer()
         print(f"[tracker] timer running ({active.get('description','')[:50]}) — skipping auto-capture")
         # Also reset idle state so we don't accumulate a streak from the pre-timer captures
-        _idle_state.update({"last_hash": None, "streak": 0, "idle_entry_ids": [], "idle_start_ts": None, "idle_end_ts": None})
+        _idle_state.update({"last_hashes": None, "streak": 0, "idle_entry_ids": [], "idle_start_ts": None, "idle_end_ts": None})
         return None
 
     try:
-        jpeg, path, img = capture_screenshot()
+        jpeg, path, img, mon_hashes = capture_screenshot()
     except Exception as e:
         print(f"[capture] screenshot failed: {e}")
         return None
@@ -721,12 +739,10 @@ def capture_once() -> dict | None:
     interval = int(CONFIG.get("screenshot_interval_minutes", 15))
     now = datetime.now()
 
-    # ---- Idle detection ----
-    new_hash = ahash(img) if IDLE_ENABLED else None
+    # ---- Idle detection (per-monitor: idle only if EVERY screen is static) ----
     is_similar = False
-    if IDLE_ENABLED and _idle_state["last_hash"] is not None:
-        dist = hamming(_idle_state["last_hash"], new_hash)
-        is_similar = dist <= IDLE_THRESHOLD
+    if IDLE_ENABLED and _idle_state["last_hashes"] is not None:
+        is_similar = monitors_static(_idle_state["last_hashes"], mon_hashes, IDLE_THRESHOLD)
 
     if IDLE_ENABLED and is_similar:
         _idle_state["streak"] += 1
@@ -743,7 +759,7 @@ def capture_once() -> dict | None:
             )
             _idle_state["idle_entry_ids"].append(eid)
             print(f"[{now.strftime('%H:%M:%S')}] #{eid} IDLE (streak {_idle_state['streak']})")
-            # Don't update last_hash — keep comparing to the *first* idle screen
+            # Don't update last_hashes — keep comparing to the *first* idle screen
             return {"id": eid, "idle": True, "screenshot_path": path}
         # streak below threshold: don't reset, just fall through to classify
     elif IDLE_ENABLED:
@@ -763,7 +779,7 @@ def capture_once() -> dict | None:
         _idle_state["idle_end_ts"] = None
 
     if IDLE_ENABLED:
-        _idle_state["last_hash"] = new_hash
+        _idle_state["last_hashes"] = mon_hashes
 
     # ---- Normal classify path ----
     tree = DB_INSTANCE.get_tree()
