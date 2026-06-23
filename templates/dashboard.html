@@ -77,7 +77,7 @@
       background: rgba(0,0,0,0.25); border-radius: 6px; padding: 10px;
       margin-top: 8px; display: grid; grid-template-columns: 1fr; gap: 6px;
     }
-    .pending-banner .pf-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto auto; gap: 6px; }
+    .pending-banner .pf-row { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
     .pending-banner select, .pending-banner input {
       background: var(--bg); border: 1px solid var(--border); color: var(--text);
       padding: 6px 8px; border-radius: 5px; font-size: 12px; width: 100%;
@@ -237,37 +237,48 @@
   {% if pending %}
   <div class="pending-banner">
     <h3>⏸ {{ pending|length }} idle period{{ '' if pending|length == 1 else 's' }} need backfill</h3>
-    <div class="meta">The tracker noticed your screen didn't change for a while. Fill in what you were actually doing, or keep them as "Away".</div>
+    <div class="meta">The tracker noticed your screen didn't change for a while. Just describe what you were doing — it'll categorize automatically. Or mark it as away.</div>
     {% for p in pending %}
-    <div class="pending-item">
+    <div class="pending-item" data-pid="{{ p.id }}">
       <div class="meta">
         Away from {{ p.start_ts[11:16] }} → {{ p.end_ts[11:16] }} on {{ p.start_ts[:10] }}
-        (~{{ p.entry_ids|length * (summary.total_minutes // (summary.parents|sum(attribute='subs')|length or 1) if false else 15) }} min,
-        {{ p.entry_ids|length }} capture{{ '' if p.entry_ids|length == 1 else 's' }})
+        ({{ p.entry_ids|length }} capture{{ '' if p.entry_ids|length == 1 else 's' }})
       </div>
-      <form action="/api/prompts/{{ p.id }}/resolve" method="post" class="pf-row pending-form" data-pid="{{ p.id }}">
-        <select name="category" class="pf-parent">
-          {% for parent in tree.keys() %}<option value="{{ parent }}">{{ parent }}</option>{% endfor %}
-        </select>
-        <input name="subcategory" class="pf-sub" placeholder="Subcategory">
-        <input name="description" placeholder="What were you doing?">
-        <button type="submit" class="btn btn-primary">Backfill</button>
-        <button type="submit" name="keep_as_away" value="1" class="btn">Keep as Away</button>
-      </form>
+      <div class="pf-row">
+        <input class="pf-desc" placeholder="What were you doing? (e.g. call with a supplier about restock)">
+        <button type="button" class="btn btn-primary pf-save" onclick="resolveText({{ p.id }})">Save</button>
+        <button type="button" class="btn pf-away" onclick="resolveAway({{ p.id }})">I was away</button>
+      </div>
+      <div class="pf-result meta" style="display:none; margin-top:6px;"></div>
     </div>
     {% endfor %}
   </div>
   <script>
-    document.querySelectorAll('.pending-form').forEach(form => {
-      const parent = form.querySelector('.pf-parent');
-      const sub = form.querySelector('.pf-sub');
-      const sync = () => {
-        const subs = (window.TREE_DATA || {{ tree|tojson }})[parent.value] || [];
-        if (subs.length && !sub.value) sub.value = subs[0];
-      };
-      parent.addEventListener('change', sync);
-      sync();
-    });
+    function _pendItem(pid){ return document.querySelector('.pending-item[data-pid="'+pid+'"]'); }
+    function resolveText(pid) {
+      const item = _pendItem(pid);
+      const desc = item.querySelector('.pf-desc').value.trim();
+      const result = item.querySelector('.pf-result');
+      if (!desc) { item.querySelector('.pf-desc').focus(); return; }
+      item.querySelector('.pf-save').disabled = true;
+      result.style.display = 'block';
+      result.textContent = 'Categorizing…';
+      fetch('/api/prompts/'+pid+'/resolve-text', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({description: desc}),
+      }).then(r => r.json()).then(d => {
+        if (d.error) { result.textContent = 'Error: ' + d.error; item.querySelector('.pf-save').disabled = false; return; }
+        result.style.color = 'var(--accent-2)';
+        result.textContent = '✓ Logged as ' + d.category + ' › ' + d.subcategory;
+        setTimeout(() => location.reload(), 1200);
+      }).catch(err => { result.textContent = 'Error: ' + err; item.querySelector('.pf-save').disabled = false; });
+    }
+    function resolveAway(pid) {
+      fetch('/api/prompts/'+pid+'/resolve', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({keep_as_away: true}),
+      }).then(r => r.json()).then(() => location.reload());
+    }
   </script>
   {% endif %}
 

@@ -288,6 +288,50 @@ def classify_screenshot(jpeg_bytes: bytes, tree: dict[str, list[str]]) -> dict:
     return result
 
 
+TEXT_CLASSIFY_PROMPT = """The user stepped away from their computer, then wrote a short note about what they were actually doing during that time. Categorize the note.
+
+USER CONTEXT:
+{user_context}
+
+CATEGORY TREE (parent -> known subcategories):
+{tree}
+
+RULES:
+- Pick the single best PARENT category from the tree. Only invent a new parent if NOTHING fits — rare.
+- Pick a SUBCATEGORY under that parent. If none of the listed subs fit, propose a new short one (2-4 words, Title Case).
+- If the note clearly describes personal / non-work / break time (lunch, gym, errands, appointment), use parent "Away".
+
+Return ONLY valid JSON:
+{{"category": "<parent>", "subcategory": "<subcategory>", "is_new_subcategory": <true|false>}}"""
+
+
+def classify_text(note: str, tree: dict[str, list[str]]) -> dict:
+    """Categorize a short free-text note (idle backfill) into parent + subcategory."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=CONFIG["anthropic_api_key"])
+    system = TEXT_CLASSIFY_PROMPT.format(user_context=get_user_context(), tree=_format_tree(tree))
+    resp = client.messages.create(
+        model=CONFIG.get("model", "claude-sonnet-4-6"),
+        max_tokens=200,
+        system=system,
+        messages=[{"role": "user", "content": f'Note: "{note}"'}],
+    )
+    raw = resp.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        result = {"category": "Admin/Other", "subcategory": "Misc", "is_new_subcategory": False}
+    result.setdefault("category", "Admin/Other")
+    result.setdefault("subcategory", result["category"])
+    result.setdefault("is_new_subcategory", False)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -1540,6 +1584,30 @@ def create_app():
             return jsonify({"ok": True})
         return redirect(request.referrer or url_for("daily"))
 
+    @app.route("/api/prompts/<int:pid>/resolve-text", methods=["POST"])
+    def api_prompt_resolve_text(pid):
+        """Backfill an idle period from a free-text note: AI picks the category."""
+        data = request.get_json(silent=True) or {}
+        note = (data.get("description") or "").strip()
+        if not note:
+            return jsonify({"error": "description required"}), 400
+        if not has_api_key():
+            return jsonify({"error": "no API key configured"}), 400
+        tree = DB_INSTANCE.get_tree()
+        try:
+            result = classify_text(note, tree)
+        except Exception as e:
+            return jsonify({"error": f"could not categorize: {e}"}), 502
+        parent = (result.get("category") or "Admin/Other").strip()
+        sub = (result.get("subcategory") or parent).strip()
+        DB_INSTANCE.add_category(parent, parent=None, user_added=True)
+        if sub != parent:
+            DB_INSTANCE.add_category(sub, parent=parent, user_added=True)
+        ok = DB_INSTANCE.resolve_prompt(pid, parent, sub, note, keep_as_away=False)
+        if not ok:
+            return jsonify({"error": "not found"}), 404
+        return jsonify({"ok": True, "category": parent, "subcategory": sub})
+
     return app
 
 
@@ -1559,65 +1627,53 @@ def _post_resolve(base: str, prompt_id: int, payload: dict):
     urllib.request.urlopen(req, timeout=5).read()
 
 
+def _post_resolve_text(base: str, prompt_id: int, note: str) -> dict:
+    """POST a free-text note; the server AI-categorizes and backfills. Returns
+    {category, subcategory} (or {error}). Longer timeout — it calls Claude."""
+    import urllib.request
+    req = urllib.request.Request(
+        f"{base}/api/prompts/{prompt_id}/resolve-text",
+        data=json.dumps({"description": note}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    return json.loads(urllib.request.urlopen(req, timeout=30).read())
+
+
 def _run_idle_popup_macos(prompt_id: int, prompt: dict, tree: dict, base: str):
-    """Native macOS backfill dialog via osascript (no Tkinter dependency)."""
-    parents = sorted(tree.keys()) or ["Admin/Other"]
+    """Native macOS backfill dialog via osascript — one box, AI categorizes it."""
     start = datetime.fromisoformat(prompt["start_ts"]).strftime("%I:%M %p")
     end = datetime.fromisoformat(prompt["end_ts"]).strftime("%I:%M %p")
     span_min = len(prompt["entry_ids"]) * int(CONFIG.get("screenshot_interval_minutes", 15))
 
-    def osa(script: str) -> str:
-        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-        return r.stdout.strip()
-
     def esc(s: str) -> str:
-        # Escape backslashes and double quotes for AppleScript string literals
         return s.replace("\\", "\\\\").replace('"', '\\"')
 
-    AWAY = "I was actually away (keep as Away)"
-
-    # Step 1 — pick the parent category (or choose to keep it as Away)
-    items = parents + [AWAY]
-    item_list = ", ".join('"%s"' % esc(p) for p in items)
-    prompt_text = esc(f"You were away {start} -> {end}  (~{span_min} min). What were you working on?")
-    choice = osa(
-        f'choose from list {{{item_list}}} '
-        f'with title "Welcome back" with prompt "{prompt_text}" '
-        f'default items {{"{esc(parents[0])}"}}'
-    )
-    if not choice or choice == "false":
-        return  # cancelled — leave the captures flagged as Away
-    if choice == AWAY:
-        _post_resolve(base, prompt_id, {"keep_as_away": True})
-        return
-    parent = choice
-
-    # Step 2 — pick a subcategory
-    subs = tree.get(parent, [])
-    sub = parent
-    if subs:
-        sub_list = ", ".join('"%s"' % esc(s) for s in subs)
-        picked = osa(
-            f'choose from list {{{sub_list}}} '
-            f'with title "{esc(parent)}" with prompt "Pick a subcategory" '
-            f'default items {{"{esc(subs[0])}"}}'
-        )
-        if picked and picked != "false":
-            sub = picked
-
-    # Step 3 — description
+    prompt_text = esc(f"You were away {start} → {end} (~{span_min} min).\nWhat were you doing? It'll categorize automatically.")
     out = subprocess.run(
         ["osascript", "-e",
-         f'display dialog "What were you doing?" default answer "" '
-         f'with title "{esc(parent)} > {esc(sub)}" '
-         f'buttons {{"Skip", "Save"}} default button "Save"'],
+         f'display dialog "{prompt_text}" default answer "" '
+         f'with title "Welcome back" buttons {{"I was away", "Save"}} default button "Save"'],
         capture_output=True, text=True,
     ).stdout.strip()
-    desc = ""
-    if "text returned:" in out:
-        desc = out.split("text returned:", 1)[1].strip()
 
-    _post_resolve(base, prompt_id, {"category": parent, "subcategory": sub, "description": desc})
+    if not out or out.startswith("button returned:I was away"):
+        # genuinely away (or empty) — keep the captures as Away
+        _post_resolve(base, prompt_id, {"keep_as_away": True})
+        return
+    note = out.split("text returned:", 1)[1].strip() if "text returned:" in out else ""
+    if not note:
+        _post_resolve(base, prompt_id, {"keep_as_away": True})
+        return
+
+    try:
+        res = _post_resolve_text(base, prompt_id, note)
+        cat, sub = res.get("category"), res.get("subcategory")
+        if cat:
+            subprocess.run(["osascript", "-e",
+                            f'display notification "Logged as {esc(cat)} › {esc(sub)}" with title "Time Tracker"'])
+    except Exception as e:
+        print(f"[popup] resolve-text failed: {e}")
 
 
 def run_idle_popup(prompt_id: int):
@@ -1648,9 +1704,9 @@ def run_idle_popup(prompt_id: int):
             print(f"[popup] macOS dialog failed: {e}")
         return
 
-    # Windows / Linux: Tkinter modal
+    # Windows / Linux: Tkinter modal — one box, AI categorizes it.
     import tkinter as tk
-    from tkinter import ttk, messagebox
+    from tkinter import messagebox
 
     start = datetime.fromisoformat(prompt["start_ts"]).strftime("%I:%M %p")
     end = datetime.fromisoformat(prompt["end_ts"]).strftime("%I:%M %p")
@@ -1658,64 +1714,52 @@ def run_idle_popup(prompt_id: int):
 
     root = tk.Tk()
     root.title("Welcome back — what were you working on?")
-    root.geometry("460x300")
+    root.geometry("440x250")
     root.attributes("-topmost", True)
     root.lift()
 
     tk.Label(root, text=f"You were away {start} → {end}  (~{span_min} min)",
              font=("Segoe UI", 11, "bold")).pack(pady=(14, 4), padx=14, anchor="w")
-    tk.Label(root, text="Backfill those captures with the right category, or keep as Away.",
+    tk.Label(root, text="Just describe what you were doing — it'll categorize automatically.",
              fg="#666", font=("Segoe UI", 9)).pack(padx=14, anchor="w")
 
-    frm = tk.Frame(root); frm.pack(padx=14, pady=10, fill="x")
+    desc_text = tk.Text(root, height=4, font=("Segoe UI", 11))
+    desc_text.pack(padx=14, pady=10, fill="x")
+    desc_text.focus_set()
 
-    tk.Label(frm, text="Category").grid(row=0, column=0, sticky="w")
-    parent_var = tk.StringVar(value=sorted(tree.keys())[0] if tree else "Admin/Other")
-    parent_cb = ttk.Combobox(frm, textvariable=parent_var, values=sorted(tree.keys()), width=30, state="readonly")
-    parent_cb.grid(row=0, column=1, sticky="ew", pady=2)
-
-    tk.Label(frm, text="Subcategory").grid(row=1, column=0, sticky="w")
-    sub_var = tk.StringVar()
-    sub_cb = ttk.Combobox(frm, textvariable=sub_var, width=30)
-    sub_cb.grid(row=1, column=1, sticky="ew", pady=2)
-
-    def refresh_subs(*_):
-        subs = tree.get(parent_var.get(), [])
-        sub_cb["values"] = subs
-        if subs and not sub_var.get():
-            sub_var.set(subs[0])
-    parent_cb.bind("<<ComboboxSelected>>", refresh_subs)
-    refresh_subs()
-
-    tk.Label(frm, text="What were you doing?").grid(row=2, column=0, sticky="nw", pady=(8, 0))
-    desc_text = tk.Text(frm, width=32, height=4, font=("Segoe UI", 10))
-    desc_text.grid(row=2, column=1, sticky="ew", pady=(8, 0))
-
-    frm.columnconfigure(1, weight=1)
+    status = tk.Label(root, text="", fg="#666", font=("Segoe UI", 9))
+    status.pack(padx=14, anchor="w")
 
     btns = tk.Frame(root); btns.pack(padx=14, pady=12, fill="x")
 
-    def submit(keep_as_away=False):
-        payload = {
-            "category": parent_var.get(),
-            "subcategory": sub_var.get() or parent_var.get(),
-            "description": desc_text.get("1.0", "end").strip(),
-            "keep_as_away": keep_as_away,
-        }
+    def do_away():
         try:
-            req = urllib.request.Request(
-                f"{base}/api/prompts/{prompt_id}/resolve",
-                data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            urllib.request.urlopen(req, timeout=5).read()
+            _post_resolve(base, prompt_id, {"keep_as_away": True})
+            root.destroy()
+        except Exception as e:
+            messagebox.showerror("Failed", str(e))
+
+    def do_save():
+        note = desc_text.get("1.0", "end").strip()
+        if not note:
+            status.config(text="Type a short description, or click ‘I was away’.")
+            return
+        status.config(text="Categorizing…")
+        root.update_idletasks()
+        try:
+            res = _post_resolve_text(base, prompt_id, note)
+            if res.get("error"):
+                messagebox.showerror("Backfill failed", res["error"])
+                status.config(text="")
+                return
+            messagebox.showinfo("Logged", f"Logged as {res.get('category')} › {res.get('subcategory')}")
             root.destroy()
         except Exception as e:
             messagebox.showerror("Backfill failed", str(e))
+            status.config(text="")
 
-    tk.Button(btns, text="I was actually away", command=lambda: submit(keep_as_away=True)).pack(side="left")
-    tk.Button(btns, text="Save backfill", command=lambda: submit(False),
+    tk.Button(btns, text="I was away", command=do_away).pack(side="left")
+    tk.Button(btns, text="Save", command=do_save,
               bg="#4f7cff", fg="white", font=("Segoe UI", 10, "bold")).pack(side="right")
 
     root.mainloop()

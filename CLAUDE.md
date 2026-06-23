@@ -36,8 +36,26 @@ py -3 scripts/safe_test.py -c "import main; ..."
 py -3 scripts/safe_test.py path/to/test_script.py
 ```
 
-For intentional one-off data edits (recovery, migrations), snapshot first:
-`copy timetracker.db backups\timetracker.db.pre-<reason>` (Windows) then make the change.
+## WAL-safe snapshots (IMPORTANT — a plain file copy can corrupt the DB)
+
+The DB is in **WAL mode**. Do **NOT** snapshot with `copy timetracker.db ...` /
+`shutil.copy()` while the tracker is running — recent commits live in the
+`-wal` sidecar, so a bare copy of the main file can be torn/incomplete, and
+copying a file *over* `timetracker.db` while a process has it open corrupts it.
+(This actually happened on 2026-06-23 and required a row-by-row salvage.)
+
+For intentional one-off edits (recovery, migrations), snapshot with the SQLite
+**backup API**, which is consistent under WAL:
+
+```python
+import sqlite3
+s = sqlite3.connect("timetracker.db"); d = sqlite3.connect("backups/timetracker.db.pre-<reason>")
+with d: s.backup(d)
+s.close(); d.close()
+```
+
+To restore, back up the other direction (snapshot -> live) the same way — never
+file-copy over a live DB. `scripts/safe_test.py` already uses this method.
 
 ## Schema quick reference
 
