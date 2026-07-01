@@ -228,6 +228,7 @@
     </div>
     <div style="display:flex; gap:8px;">
       <a class="btn" href="/export.csv?view={{ view }}&date={{ iso_date }}">↓ CSV</a>
+      <button class="btn" onclick="openExport()">↓ Export range…</button>
       <form action="/capture-now" method="post" style="margin:0;">
         <button class="btn btn-primary" type="submit">Capture now</button>
       </form>
@@ -431,6 +432,38 @@
   </form>
 </dialog>
 
+<dialog class="edit-modal" id="export-modal">
+  <div class="edit-modal-body">
+    <h3>Export to CSV</h3>
+    <div class="field" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div>
+        <label>From</label>
+        <input type="date" id="ex-from">
+      </div>
+      <div>
+        <label>To</label>
+        <input type="date" id="ex-to">
+      </div>
+    </div>
+    <div class="field">
+      <label>Quick ranges</label>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        <button type="button" class="btn" onclick="exRange(7)">Last 7 days</button>
+        <button type="button" class="btn" onclick="exRange(30)">Last 30 days</button>
+        <button type="button" class="btn" onclick="exRange(90)">Last 90 days</button>
+        <button type="button" class="btn" onclick="exMonth()">This month</button>
+      </div>
+    </div>
+  </div>
+  <div class="edit-modal-actions">
+    <div></div>
+    <div class="right">
+      <button type="button" class="btn" onclick="document.getElementById('export-modal').close()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="doExport()">Download CSV</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog class="schedule-modal" id="schedule-modal">
   <div class="body">
     <h3>Auto work schedule</h3>
@@ -613,6 +646,36 @@
   // Close on backdrop click
   document.getElementById('edit-modal').addEventListener('click', e => {
     if (e.target.id === 'edit-modal') e.target.close();
+  });
+
+  // -------- Export custom range --------
+  function _fmtDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function openExport() {
+    const to = new Date(), from = new Date(); from.setDate(from.getDate() - 29);
+    document.getElementById('ex-from').value = _fmtDate(from);
+    document.getElementById('ex-to').value = _fmtDate(to);
+    document.getElementById('export-modal').showModal();
+  }
+  function exRange(days) {
+    const to = new Date(), from = new Date(); from.setDate(from.getDate() - (days - 1));
+    document.getElementById('ex-from').value = _fmtDate(from);
+    document.getElementById('ex-to').value = _fmtDate(to);
+  }
+  function exMonth() {
+    const now = new Date();
+    document.getElementById('ex-from').value = _fmtDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    document.getElementById('ex-to').value = _fmtDate(now);
+  }
+  function doExport() {
+    const f = document.getElementById('ex-from').value, t = document.getElementById('ex-to').value;
+    if (!f || !t) { alert('Pick both a From and To date.'); return; }
+    window.location.href = `/export.csv?view=range&from=${f}&to=${t}`;
+    document.getElementById('export-modal').close();
+  }
+  document.getElementById('export-modal').addEventListener('click', e => {
+    if (e.target.id === 'export-modal') e.target.close();
   });
 </script>
 

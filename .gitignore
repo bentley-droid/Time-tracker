@@ -11,6 +11,8 @@ __pycache__/
 *.pyc
 tracker.log
 .tracker.pid
+.fuse_hidden*
+_cowork_probe
 
 # config.json is per-machine (created from config.example.json on first run).
 # config.example.json IS tracked — it seeds new installs.

@@ -15,7 +15,14 @@
     }
     .backlink:hover { background: #f0f3ff; }
     .sub { color: #777; margin-bottom: 32px; }
-    @media print { .backlink { display: none; } }
+    .weeknav { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .wn-btn { background: #fff; border: 1px solid #d7dcea; border-radius: 8px; padding: 8px 14px;
+              color: #1a2a5e; text-decoration: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .wn-btn:hover { background: #f0f3ff; }
+    .wn-today { color: #4f7cff; }
+    .wn-date { border: 1px solid #d7dcea; border-radius: 8px; padding: 7px 10px; font-size: 14px;
+               color: #222; font-family: inherit; }
+    @media print { .backlink, .weeknav { display: none; } }
     .big { font-size: 40px; font-weight: 700; margin: 0; }
     .card { background: #fff; border: 1px solid #e6e6e6; border-radius: 10px; padding: 24px; margin-bottom: 24px; }
     h2 { font-size: 18px; margin: 0 0 16px; }
@@ -46,6 +53,13 @@
 <body>
   <a href="/today" class="backlink">← Dashboard</a>
   <h1>Weekly Time Report</h1>
+  <div class="weeknav">
+    <a class="wn-btn" href="/weekly-report?date={{ prev_week }}">← Prev week</a>
+    <input type="date" class="wn-date" value="{{ iso_date }}"
+           onchange="if(this.value) location.href='/weekly-report?date='+this.value" title="Jump to any week">
+    <a class="wn-btn" href="/weekly-report?date={{ next_week }}">Next week →</a>
+    {% if not is_current_week %}<a class="wn-btn wn-today" href="/weekly-report?date={{ this_week }}">This week</a>{% endif %}
+  </div>
   <div class="sub">
     {{ week_label }} · Generated {{ generated_at }}
     · <a href="/export.csv?view=week&date={{ iso_date }}" style="color:#4f7cff;">Download CSV</a>

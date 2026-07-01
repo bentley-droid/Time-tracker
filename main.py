@@ -1382,7 +1382,20 @@ def create_app():
         view = request.args.get("view", "day")
         date_str = request.args.get("date")
         anchor = datetime.strptime(date_str, "%Y-%m-%d") if date_str else datetime.now()
-        if view == "week":
+        if view == "range":
+            # Custom range: from/to are inclusive dates (YYYY-MM-DD).
+            try:
+                f_str = request.args.get("from") or anchor.strftime("%Y-%m-%d")
+                t_str = request.args.get("to") or anchor.strftime("%Y-%m-%d")
+                start = datetime.strptime(f_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+                end_day = datetime.strptime(t_str, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+            except ValueError:
+                return "Bad from/to date (use YYYY-MM-DD)", 400
+            if end_day < start:
+                start, end_day = end_day, start  # tolerate reversed range
+            end = end_day + timedelta(days=1)     # make 'to' inclusive
+            fname = f"timetracker_{start.strftime('%Y-%m-%d')}_to_{end_day.strftime('%Y-%m-%d')}.csv"
+        elif view == "week":
             start = (anchor - timedelta(days=anchor.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + timedelta(days=7)
             fname = f"timetracker_week_{start.strftime('%Y-%m-%d')}.csv"
@@ -1418,10 +1431,15 @@ def create_app():
             de = ds + timedelta(days=1)
             day_entries = [e for e in entries if ds.isoformat() <= e["timestamp"] < de.isoformat()]
             per_day.append({"name": ds.strftime("%a %b %d"), "hours": round(sum(e["duration_minutes"] for e in day_entries) / 60, 2)})
+        this_week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         return render_template(
             "weekly_report.html",
             week_label=f"{start.strftime('%b %d')} – {(start + timedelta(days=6)).strftime('%b %d, %Y')}",
             iso_date=start.strftime("%Y-%m-%d"),
+            prev_week=(start - timedelta(days=7)).strftime("%Y-%m-%d"),
+            next_week=(start + timedelta(days=7)).strftime("%Y-%m-%d"),
+            this_week=this_week_start.strftime("%Y-%m-%d"),
+            is_current_week=(start == this_week_start),
             summary=summary, per_day=per_day,
             generated_at=datetime.now().strftime("%b %d, %Y at %I:%M %p"),
         )
